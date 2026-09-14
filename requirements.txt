@@ -1,5 +1,5 @@
 pyaudio>=0.2.14
-deepgram-sdk>=3.0.0
+deepgram-sdk>=3.0.0,<4.0.0
 openai>=1.0.0
 customtkinter>=5.2.0
 python-dotenv>=1.0.0
