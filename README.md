@@ -1,6 +1,6 @@
 # ⚡ Interview Copilot
 
-Assistente inteligente em tempo real para entrevistas técnicas. O **Interview Copilot** captura o áudio do sistema (loopback/monitor de saída do PulseAudio/PipeWire no Linux), realiza transcrição de fala contínua de altíssima precisão via WebSocket da **Deepgram** e gera respostas instantâneas em streaming através da API da **OpenAI (`gpt-4o-mini`)**, exibindo tudo em uma interface overlay flutuante semi-transparente desenvolvida em **CustomTkinter**.
+Assistente inteligente em tempo real para entrevistas técnicas. O **Interview Copilot** captura o áudio do sistema (loopback/monitor de saída do PulseAudio/PipeWire no Linux), realiza transcrição de fala contínua de altíssima precisão via WebSocket da **Deepgram** e gera respostas instantâneas em streaming através da API de ultra-alta velocidade da **Groq (`llama3-8b-8192`)**, exibindo tudo em uma interface overlay flutuante semi-transparente desenvolvida em **CustomTkinter**.
 
 ---
 
@@ -8,7 +8,7 @@ Assistente inteligente em tempo real para entrevistas técnicas. O **Interview C
 
 - **Captura de Áudio Interno (Loopback)**: Escuta diretamente a saída de áudio do sistema (reuniões no Google Meet, Zoom, Teams, Discord, etc.) sem necessidade de microfone externo apontado para caixas de som.
 - **Transcrição Live & Baixa Latência**: Integração via WebSocket com modelo Deepgram `nova-2` com suporte a resultados parciais e finalizações de sentença em tempo real.
-- **Respostas de IA em Streaming**: Respostas geradas token a token com `gpt-4o-mini`, otimizadas para leitura rápida (máximo 3 a 4 frases, método STAR e foco prático).
+- **Respostas de IA em Streaming**: Respostas geradas token a token com `llama3-8b-8192` (Groq), otimizadas para leitura rápida (máximo 3 a 4 frases, método STAR e foco prático).
 - **Overlay Flutuante & Transparente**: Janela moderna e arrastável que permanece no topo das outras aplicações sem roubar o foco, com opacidade configurável.
 - **Arquitetura Assíncrona Não-Bloqueante**: Integração suave entre `asyncio` e o loop de eventos do `CustomTkinter` via thread-safe callbacks.
 
@@ -21,7 +21,7 @@ Assistente inteligente em tempo real para entrevistas técnicas. O **Interview C
 | **Linguagem** | Python 3.10+ | Núcleo da aplicação |
 | **Áudio** | PyAudio (PortAudio) | Captura de stream PCM 16kHz mono (PulseAudio / PipeWire) |
 | **STT (Speech-to-Text)** | Deepgram SDK (`nova-2`) | Transcrição de áudio em tempo real via WebSocket |
-| **LLM** | OpenAI API (`gpt-4o-mini`) | Geração de respostas técnicas contextuais em streaming |
+| **LLM** | Groq API (`llama3-8b-8192`) | Geração de respostas técnicas contextuais em ultra-alta velocidade |
 | **Interface Gráfica** | CustomTkinter | Overlay HUD flutuante, arrastável e semi-transparente |
 | **Concorrência** | Asyncio + Threading | Comunicação sem travamentos entre áudio, IA e interface |
 
