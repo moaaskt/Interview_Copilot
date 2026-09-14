@@ -91,7 +91,7 @@ class CopilotUI(ctk.CTk):
         # Área de Resposta da IA
         self.ai_label = ctk.CTkLabel(
             self.main_frame,
-            text="Sugestão da IA (Groq / Llama 3):",
+            text="Sugestão da IA (Groq):",
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#A6E3A1"
         )

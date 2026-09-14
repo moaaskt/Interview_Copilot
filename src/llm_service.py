@@ -10,12 +10,13 @@ class LLMService:
     Serviço para geração de respostas de IA em streaming usando o modelo llama3-8b-8192 da Groq.
     """
 
-    def __init__(self, api_key: str, model: str = "llama3-8b-8192") -> None:
+    def __init__(self, api_key: str, model: str | None = None) -> None:
+        import os
         self.client = AsyncOpenAI(
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
         )
-        self.model = model
+        self.model = model or os.getenv("GROQ_MODEL", "groq/compound-mini")
         self.system_prompt = (
             "Você é um Desenvolvedor Full Stack/Backend com ~3 anos de prática e primeiro emprego formal em 2025. "
             "Sua tarefa é gerar respostas para perguntas de entrevista técnica em tempo real.\n\n"
