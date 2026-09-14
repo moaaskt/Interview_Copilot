@@ -50,24 +50,30 @@ class CopilotUI(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self, corner_radius=12, fg_color="#1E1E2E", border_width=1, border_color="#313244")
         self.main_frame.pack(fill="both", expand=True)
 
-        # Cabeçalho customizado (para mover a janela)
-        self.header_frame = ctk.CTkFrame(self.main_frame, height=32, fg_color="#181825", corner_radius=10)
+        # Cabeçalho customizado (para mover a janela) - Usando tk.Frame nativo para capturar eventos de mouse com 100% de fidelidade
+        import tkinter as tk
+        self.header_frame = tk.Frame(self.main_frame, height=32, bg="#181825", cursor="fleur")
         self.header_frame.pack(fill="x", padx=4, pady=(4, 2))
+        self.header_frame.pack_propagate(False)
 
-        self.title_label = ctk.CTkLabel(
+        self.title_label = tk.Label(
             self.header_frame,
             text="⚡ Interview Copilot",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            text_color="#89B4FA"
+            font=("Helvetica", 10, "bold"),
+            fg="#89B4FA",
+            bg="#181825",
+            cursor="fleur"
         )
         self.title_label.pack(side="left", padx=10)
 
         # Badge de Status
-        self.status_badge = ctk.CTkLabel(
+        self.status_badge = tk.Label(
             self.header_frame,
             text="● Pronto",
-            font=ctk.CTkFont(size=11),
-            text_color="#A6ADC8"
+            font=("Helvetica", 9),
+            fg="#A6ADC8",
+            bg="#181825",
+            cursor="fleur"
         )
         self.status_badge.pack(side="left", padx=8)
 
@@ -84,9 +90,9 @@ class CopilotUI(ctk.CTk):
         self.close_btn.pack(side="right", padx=5)
 
         # Eventos do mouse para arrastar a janela sem barra de título
-        self._bind_drag_events(self.header_frame)
-        self._bind_drag_events(self.title_label)
-        self._bind_drag_events(self.status_badge)
+        for widget in (self.header_frame, self.title_label, self.status_badge):
+            widget.bind("<Button-1>", self._start_drag)
+            widget.bind("<B1-Motion>", self._drag)
 
         # Barra de Controles (Gravar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -219,7 +225,7 @@ class CopilotUI(ctk.CTk):
             )
             self.status_badge.configure(
                 text="● Ouvindo Pergunta...",
-                text_color="#F38BA8"
+                fg="#F38BA8"
             )
         else:
             self.record_btn.configure(
@@ -230,12 +236,12 @@ class CopilotUI(ctk.CTk):
             )
             self.status_badge.configure(
                 text="● Pronto",
-                text_color="#A6ADC8"
+                fg="#A6ADC8"
             )
 
     def set_status(self, text: str, color: str = "#A6ADC8") -> None:
         """Atualiza a mensagem e cor do badge de status."""
-        self.status_badge.configure(text=text, text_color=color)
+        self.status_badge.configure(text=text, fg=color)
 
     def update_transcription(self, text: str, is_final: bool = False) -> None:
         """Atualiza a caixa de transcrição."""
