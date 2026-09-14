@@ -50,10 +50,10 @@ class Transcriber:
                     return
 
                 if result.is_final:
-                    logger.debug(f"[Deepgram FINAL]: {sentence}")
+                    logger.info(f"[Deepgram FINAL]: {sentence}")
                     self.on_final_transcript(sentence)
                 else:
-                    logger.debug(f"[Deepgram INTERIM]: {sentence}")
+                    logger.info(f"[Deepgram INTERIM]: {sentence}")
                     self.on_interim_transcript(sentence)
 
             def on_error(self_conn, error, **kwargs):

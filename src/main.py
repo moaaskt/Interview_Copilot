@@ -19,7 +19,8 @@ logger = logging.getLogger("InterviewCopilot")
 
 class CopilotApp:
     def __init__(self) -> None:
-        load_dotenv()
+        # override=True garante que as variáveis definidas no .env prevaleçam sobre exportações antigas do shell
+        load_dotenv(override=True)
 
         self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
         self.groq_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -37,19 +38,27 @@ class CopilotApp:
         )
         self.audio_capture = AudioCapture(audio_callback=self.on_audio_data)
 
-        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
+        self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
 
     def on_audio_data(self, data: bytes) -> None:
-        """Callback chamada a cada chunk de áudio capturado do loopback WASAPI."""
+        """Callback chamada a cada chunk de áudio capturado."""
         self.transcriber.send_audio(data)
 
     def on_interim_transcript(self, text: str) -> None:
-        """Callback para transcrições parciais (interim)."""
-        self.ui.update_transcription(text, is_final=False)
+        """Callback para transcrições parciais (interim) - despachado thread-safe para a UI."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.update_transcription, text, False)
+        else:
+            self.ui.update_transcription(text, is_final=False)
 
     def on_final_transcript(self, text: str) -> None:
-        """Callback para transcrições finais (enviadas ao LLM)."""
+        """Callback para transcrições finais - despachado thread-safe para o loop e UI."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self._handle_final_transcript, text)
+
+    def _handle_final_transcript(self, text: str) -> None:
+        """Executado na thread principal do loop assíncrono."""
         self.ui.update_transcription(text, is_final=True)
 
         # Cancela requisição anterior do LLM caso haja uma em andamento
@@ -60,7 +69,7 @@ class CopilotApp:
         self.current_llm_task = self.loop.create_task(self._process_llm_stream(text))
 
     async def _process_llm_stream(self, question: str) -> None:
-        """Processa o streaming de tokens do gpt-4o-mini e envia para a UI."""
+        """Processa o streaming de tokens da Groq e envia para a UI de forma segura."""
         self.ui.clear_ai_response()
         try:
             async for token in self.llm_service.stream_response(question):
@@ -72,6 +81,7 @@ class CopilotApp:
 
     async def run(self) -> None:
         """Malha principal do evento asyncio unificada com o Tkinter event loop."""
+        self.loop = asyncio.get_running_loop()
         logger.info("Iniciando componentes do Interview Copilot...")
         
         # Conecta ao WebSocket da Deepgram
@@ -89,7 +99,7 @@ class CopilotApp:
                 self.ui.update()
                 await asyncio.sleep(0.01)
         except Exception:
-            # Captura a destruição da janela Tkinter
+            # Captura o fechamento da janela Tkinter
             pass
         finally:
             await self.shutdown()
