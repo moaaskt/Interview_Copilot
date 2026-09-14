@@ -1,15 +1,29 @@
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 from typing import Callable, Optional
 
-import pyaudio
-
 logger = logging.getLogger(__name__)
+
+IS_WINDOWS = sys.platform == "win32"
+
+if IS_WINDOWS:
+    try:
+        import pyaudiowpatch as pyaudio
+    except ImportError:
+        import pyaudio
+else:
+    try:
+        import sounddevice as sd
+    except ImportError:
+        sd = None
 
 
 class AudioCapture:
     """
-    Captura áudio do sistema (loopback/monitor PulseAudio/PipeWire) usando PyAudio.
+    Captura de áudio do sistema multiplataforma (Windows WASAPI loopback e Linux PipeWire/PulseAudio).
     Envia chunks de áudio PCM para uma callback assíncrona.
     """
 
@@ -23,54 +37,51 @@ class AudioCapture:
         self.sample_rate = sample_rate
         self.chunk_size = int(sample_rate * chunk_duration)
         self.is_running = False
-        self._pa: Optional[pyaudio.PyAudio] = None
-        self._stream = None
 
-    def _get_linux_loopback_device(self, pa: pyaudio.PyAudio):
-        """
-        Busca o dispositivo de áudio loopback/monitor do Linux (PulseAudio / PipeWire).
-        Procura por dispositivos com maxInputChannels > 0 e 'monitor' no nome.
-        Faz fallback para o dispositivo padrão de entrada caso nenhum seja encontrado.
-        """
-        device_count = pa.get_device_count()
-        for idx in range(device_count):
-            try:
-                info = pa.get_device_info_by_index(idx)
-                device_name = info.get("name", "")
-                max_input_channels = int(info.get("maxInputChannels", 0))
+        # Recursos Windows
+        self._pa: Optional[any] = None
+        self._win_stream = None
 
-                if max_input_channels > 0 and "monitor" in device_name.lower():
-                    logger.info(f"Dispositivo de loopback/monitor encontrado: [{idx}] {device_name}")
-                    return info
-            except Exception as e:
-                logger.debug(f"Erro ao inspecionar dispositivo {idx}: {e}")
+        # Recursos Linux
+        self._linux_stream = None
 
-        logger.warning(
-            "Nenhum dispositivo de áudio com 'monitor' no nome foi encontrado. "
-            "Fazendo fallback para o dispositivo de entrada padrão."
-        )
-        return pa.get_default_input_device_info()
-
-    def start(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Inicia a captura de áudio em thread separada para não bloquear o event loop."""
-        self.is_running = True
-        self._pa = pyaudio.PyAudio()
-
+    # ==========================================
+    # LÓGICA WINDOWS (PyAudioWPatch / WASAPI)
+    # ==========================================
+    def _get_windows_loopback_device(self, pa):
+        """Busca o dispositivo de áudio loopback (WASAPI) padrão do Windows."""
         try:
-            device_info = self._get_linux_loopback_device(self._pa)
-            logger.info(f"Iniciando captura loopback no dispositivo: {device_info['name']}")
+            wasapi_info = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
+        except Exception:
+            logger.warning("WASAPI não encontrado no host API. Tentando dispositivo padrão.")
+            return pa.get_default_input_device_info()
 
-            # Configurado para 1 canal (mono) e sample_rate padrão (16000 Hz) para Deepgram
+        default_speakers = pa.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+        if not default_speakers.get("isLoopbackDevice"):
+            for loopback in pa.get_loopback_device_info_generator():
+                if default_speakers["name"] in loopback["name"]:
+                    return loopback
+            for loopback in pa.get_loopback_device_info_generator():
+                return loopback
+
+        return default_speakers
+
+    def _start_windows(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Inicia a captura de áudio no Windows usando WASAPI loopback."""
+        self._pa = pyaudio.PyAudio()
+        try:
+            device_info = self._get_windows_loopback_device(self._pa)
+            logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
+
             channels = 1
             rate = self.sample_rate
 
             def pcm_callback(in_data, frame_count, time_info, status):
                 if self.is_running and in_data:
-                    # Thread-safe dispatch para o evento assíncrono do loop principal
                     loop.call_soon_threadsafe(self.audio_callback, in_data)
                 return (None, pyaudio.paContinue)
 
-            self._stream = self._pa.open(
+            self._win_stream = self._pa.open(
                 format=pyaudio.paInt16,
                 channels=channels,
                 rate=rate,
@@ -79,22 +90,111 @@ class AudioCapture:
                 frames_per_buffer=self.chunk_size,
                 stream_callback=pcm_callback,
             )
-            self._stream.start_stream()
+            self._win_stream.start_stream()
         except Exception as e:
-            logger.error(f"Erro ao inicializar captura de áudio: {e}")
+            logger.error(f"[Windows] Erro ao inicializar captura WASAPI: {e}")
             self.stop()
+
+    # ==========================================
+    # LÓGICA LINUX (sounddevice / PipeWire / PulseAudio)
+    # ==========================================
+    def _get_linux_device_index(self) -> Optional[int]:
+        """
+        Procura por dispositivos com 'monitor' no nome e max_input_channels > 0.
+        Caso não encontre diretamente (comum no ALSA/PipeWire onde os monitores são
+        roteados via pulse/pipewire/default), configura PULSE_SOURCE com o sink padrão
+        e seleciona a interface PulseAudio/PipeWire.
+        """
+        devices = sd.query_devices()
+
+        # 1. Procura por dispositivo explícito com 'monitor' no nome
+        for idx, dev in enumerate(devices):
+            if dev.get("max_input_channels", 0) > 0 and "monitor" in dev.get("name", "").lower():
+                logger.info(f"[Linux] Dispositivo monitor encontrado: [{idx}] {dev['name']}")
+                return idx
+
+        # 2. Configura PULSE_SOURCE com o monitor do sink padrão do PulseAudio / PipeWire
+        try:
+            default_sink = subprocess.check_output(
+                ["pactl", "get-default-sink"],
+                stderr=subprocess.DEVNULL,
+                text=True
+            ).strip()
+            if default_sink:
+                monitor_source = f"{default_sink}.monitor"
+                os.environ["PULSE_SOURCE"] = monitor_source
+                logger.info(f"[Linux] Configurado PULSE_SOURCE={monitor_source} para captura de saída do sistema.")
+        except Exception as e:
+            logger.debug(f"[Linux] Não foi possível obter o sink padrão via pactl: {e}")
+
+        # 3. Seleciona o dispositivo PulseAudio, PipeWire ou default
+        for preferred in ("pulse", "pipewire", "default"):
+            for idx, dev in enumerate(devices):
+                if preferred in dev.get("name", "").lower() and dev.get("max_input_channels", 0) > 0:
+                    logger.info(f"[Linux] Usando dispositivo de roteamento [{idx}] {dev['name']}")
+                    return idx
+
+        logger.warning("[Linux] Dispositivo monitor específico não encontrado. Usando dispositivo padrão do sounddevice.")
+        return None
+
+    def _start_linux(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Inicia a captura de áudio no Linux via sounddevice."""
+        if sd is None:
+            logger.error("[Linux] A biblioteca 'sounddevice' não está instalada.")
+            self.stop()
+            return
+
+        try:
+            device_index = self._get_linux_device_index()
+            device_desc = sd.query_devices(device_index)["name"] if device_index is not None else "padrão"
+            logger.info(f"[Linux] Abrindo stream sounddevice no dispositivo: {device_desc}")
+
+            def sd_callback(indata, frames, time_info, status):
+                if status:
+                    logger.debug(f"[Linux sounddevice status]: {status}")
+                if self.is_running and indata is not None:
+                    # Converte o buffer PCM int16 para bytes
+                    data_bytes = bytes(indata)
+                    loop.call_soon_threadsafe(self.audio_callback, data_bytes)
+
+            self._linux_stream = sd.InputStream(
+                device=device_index,
+                samplerate=self.sample_rate,
+                channels=1,
+                dtype="int16",
+                blocksize=self.chunk_size,
+                callback=sd_callback,
+            )
+            self._linux_stream.start()
+        except Exception as e:
+            logger.error(f"[Linux] Erro ao inicializar captura via sounddevice: {e}")
+            self.stop()
+
+    # ==========================================
+    # INTERFACE PÚBLICA (Compatível com main.py)
+    # ==========================================
+    def start(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Inicia a captura de áudio dependendo da plataforma."""
+        self.is_running = True
+        if IS_WINDOWS:
+            self._start_windows(loop)
+        else:
+            self._start_linux(loop)
 
     def stop(self) -> None:
         """Para e encerra os recursos de áudio."""
         self.is_running = False
-        if self._stream:
+
+        # Encerramento Windows
+        if self._win_stream:
             try:
-                self._stream.stop_stream()
-                self._stream.close()
+                self._win_stream.stop_stream()
+                self._win_stream.close()
             except Exception as e:
-                logger.error(f"Erro ao fechar stream de áudio: {e}")
+                logger.error(f"Erro ao fechar stream Windows: {e}")
             finally:
-                self._stream = None
+                self._win_stream = None
+
         if self._pa:
             try:
                 self._pa.terminate()
@@ -102,4 +202,15 @@ class AudioCapture:
                 logger.error(f"Erro ao encerrar PyAudio: {e}")
             finally:
                 self._pa = None
+
+        # Encerramento Linux
+        if self._linux_stream:
+            try:
+                self._linux_stream.stop()
+                self._linux_stream.close()
+            except Exception as e:
+                logger.error(f"Erro ao fechar stream Linux: {e}")
+            finally:
+                self._linux_stream = None
+
         logger.info("Captura de áudio finalizada.")

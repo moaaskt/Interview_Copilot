@@ -112,8 +112,8 @@ class CopilotUI(ctk.CTk):
         self._offset_y = event.y
 
     def _drag(self, event) -> None:
-        x = self.winfo_pointerx() - self._offset_x
-        y = self.winfo_pointery() - self._offset_y
+        x = self.winfo_x() + (event.x - self._offset_x)
+        y = self.winfo_y() + (event.y - self._offset_y)
         self.geometry(f"+{x}+{y}")
 
     def update_transcription(self, text: str, is_final: bool = False) -> None:
