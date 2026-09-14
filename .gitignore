@@ -47,7 +47,6 @@ venv.bak/
 *.swo
 *~
 .DS_Store
-.planning
 
 # Logs
 *.log

@@ -1,0 +1,10 @@
+{
+  "mode": "standard",
+  "workflow": {
+    "auto_verify": true,
+    "require_tests": false
+  },
+  "intel": {
+    "enabled": true
+  }
+}
