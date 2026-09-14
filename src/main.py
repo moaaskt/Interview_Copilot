@@ -22,14 +22,14 @@ class CopilotApp:
         load_dotenv()
 
         self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-        self.openai_key = os.getenv("OPENAI_API_KEY")
+        self.groq_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
 
-        if not self.deepgram_key or not self.openai_key:
-            logger.error("Chaves DEEPGRAM_API_KEY e OPENAI_API_KEY devem ser configuradas no arquivo .env!")
+        if not self.deepgram_key or not self.groq_key:
+            logger.error("Chaves DEEPGRAM_API_KEY e GROQ_API_KEY devem ser configuradas no arquivo .env!")
             sys.exit(1)
 
         self.ui = CopilotUI()
-        self.llm_service = LLMService(api_key=self.openai_key)
+        self.llm_service = LLMService(api_key=self.groq_key)
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
             on_interim_transcript=self.on_interim_transcript,

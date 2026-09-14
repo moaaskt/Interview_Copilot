@@ -7,11 +7,14 @@ logger = logging.getLogger(__name__)
 
 class LLMService:
     """
-    Serviço para geração de respostas de IA em streaming usando o modelo gpt-4o-mini da OpenAI.
+    Serviço para geração de respostas de IA em streaming usando o modelo llama3-8b-8192 da Groq.
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini") -> None:
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str, model: str = "llama3-8b-8192") -> None:
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
         self.model = model
         self.system_prompt = (
             "Você é um Desenvolvedor Full Stack/Backend com ~3 anos de prática e primeiro emprego formal em 2025. "
