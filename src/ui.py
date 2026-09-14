@@ -37,7 +37,7 @@ class CopilotUI(ctk.CTk):
         self.on_respond_now = on_respond_now
         self.on_clear = on_clear
 
-        # Variáveis para permitir arrastar a janela
+        # Variáveis para controle de arrasto
         self._offset_x = 0
         self._offset_y = 0
         self._is_recording = False
@@ -84,12 +84,9 @@ class CopilotUI(ctk.CTk):
         self.close_btn.pack(side="right", padx=5)
 
         # Eventos do mouse para arrastar a janela sem barra de título
-        self.header_frame.bind("<Button-1>", self._start_drag)
-        self.header_frame.bind("<B1-Motion>", self._drag)
-        self.title_label.bind("<Button-1>", self._start_drag)
-        self.title_label.bind("<B1-Motion>", self._drag)
-        self.status_badge.bind("<Button-1>", self._start_drag)
-        self.status_badge.bind("<B1-Motion>", self._drag)
+        self._bind_drag_events(self.header_frame)
+        self._bind_drag_events(self.title_label)
+        self._bind_drag_events(self.status_badge)
 
         # Barra de Controles (Gravar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -171,13 +168,20 @@ class CopilotUI(ctk.CTk):
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
 
+    def _bind_drag_events(self, widget) -> None:
+        """Vincula eventos de arrastar diretamente ao widget."""
+        widget.bind("<Button-1>", self._start_drag)
+        widget.bind("<B1-Motion>", self._drag)
+
     def _start_drag(self, event) -> None:
-        self._offset_x = event.x
-        self._offset_y = event.y
+        """Calcula o offset estático do mouse em relação ao canto superior esquerdo da janela."""
+        self._offset_x = event.x_root - self.winfo_x()
+        self._offset_y = event.y_root - self.winfo_y()
 
     def _drag(self, event) -> None:
-        x = self.winfo_x() + (event.x - self._offset_x)
-        y = self.winfo_y() + (event.y - self._offset_y)
+        """Define a posição da janela diretamente pelo cursor menos o offset do clique inicial."""
+        x = event.x_root - self._offset_x
+        y = event.y_root - self._offset_y
         self.geometry(f"+{x}+{y}")
 
     def _handle_toggle_recording(self) -> None:
