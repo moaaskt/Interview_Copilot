@@ -73,6 +73,7 @@ class Transcriber:
                 language=self.language,
                 smart_format=True,
                 interim_results=True,
+                endpointing=300,
                 encoding="linear16",
                 channels=1,
                 sample_rate=self.sample_rate,

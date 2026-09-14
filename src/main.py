@@ -29,7 +29,10 @@ class CopilotApp:
             logger.error("Chaves DEEPGRAM_API_KEY e GROQ_API_KEY devem ser configuradas no arquivo .env!")
             sys.exit(1)
 
-        self.ui = CopilotUI()
+        self.ui = CopilotUI(
+            on_toggle_recording=self.toggle_recording,
+            on_clear=self.clear_session,
+        )
         self.llm_service = LLMService(api_key=self.groq_key)
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
@@ -41,32 +44,84 @@ class CopilotApp:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
 
-    def on_audio_data(self, data: bytes) -> None:
-        """Callback chamada a cada chunk de áudio capturado."""
-        self.transcriber.send_audio(data)
+        # Estado da gravação e buffer de transcrição consolidada
+        self.is_recording = False
+        self.transcript_buffer: list[str] = []
 
-    def on_interim_transcript(self, text: str) -> None:
-        """Callback para transcrições parciais (interim) - despachado thread-safe para a UI."""
-        if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.ui.update_transcription, text, False)
+    def toggle_recording(self) -> None:
+        """Alterna entre gravar pergunta e parar para responder."""
+        if not self.is_recording:
+            self._start_recording()
         else:
-            self.ui.update_transcription(text, is_final=False)
+            self._stop_and_respond()
 
-    def on_final_transcript(self, text: str) -> None:
-        """Callback para transcrições finais - despachado thread-safe para o loop e UI."""
-        if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self._handle_final_transcript, text)
+    def _start_recording(self) -> None:
+        """Inicia uma nova rodada de gravação para a pergunta."""
+        self.is_recording = True
+        self.transcript_buffer.clear()
+        self.ui.clear_all()
+        self.ui.set_recording_state(True)
+        logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
 
-    def _handle_final_transcript(self, text: str) -> None:
-        """Executado na thread principal do loop assíncrono."""
-        self.ui.update_transcription(text, is_final=True)
+    def _stop_and_respond(self) -> None:
+        """Para a gravação e envia o texto consolidado para a IA."""
+        self.is_recording = False
+        self.ui.set_recording_state(False)
+        logger.info("⏹ Gravação finalizada.")
+
+        consolidated_question = " ".join(self.transcript_buffer).strip()
+        if not consolidated_question:
+            self.ui.set_status("● Nenhuma fala capturada", "#F38BA8")
+            logger.warning("Nenhum texto transcrito no período de gravação.")
+            return
+
+        self.ui.update_transcription(consolidated_question, is_final=True)
+        self.ui.set_status("⏳ Gerando resposta...", "#89B4FA")
 
         # Cancela requisição anterior do LLM caso haja uma em andamento
         if self.current_llm_task and not self.current_llm_task.done():
             self.current_llm_task.cancel()
 
-        # Dispara task assíncrona para streaming do LLM
-        self.current_llm_task = self.loop.create_task(self._process_llm_stream(text))
+        # Dispara task assíncrona para streaming da resposta consolidada
+        if self.loop and self.loop.is_running():
+            self.current_llm_task = self.loop.create_task(self._process_llm_stream(consolidated_question))
+
+    def clear_session(self) -> None:
+        """Limpa dados da tela e cancela qualquer processamento pendente."""
+        self.transcript_buffer.clear()
+        self.ui.clear_all()
+        self.ui.set_status("● Pronto", "#A6ADC8")
+        if self.current_llm_task and not self.current_llm_task.done():
+            self.current_llm_task.cancel()
+        logger.info("Sessão limpa pelo usuário.")
+
+    def on_audio_data(self, data: bytes) -> None:
+        """Callback chamada a cada chunk de áudio capturado. Envia apenas se estiver gravando."""
+        if self.is_recording:
+            self.transcriber.send_audio(data)
+
+    def on_interim_transcript(self, text: str) -> None:
+        """Callback para transcrições parciais - concatena ao buffer existente e exibe na UI."""
+        if not self.is_recording:
+            return
+
+        current_full = " ".join(self.transcript_buffer + [text]).strip()
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.update_transcription, current_full, False)
+        else:
+            self.ui.update_transcription(current_full, is_final=False)
+
+    def on_final_transcript(self, text: str) -> None:
+        """Callback para sentenças finalizadas - adiciona ao buffer de fala consolidado."""
+        if not self.is_recording:
+            return
+
+        text = text.strip()
+        if text:
+            self.transcript_buffer.append(text)
+            current_full = " ".join(self.transcript_buffer).strip()
+            if self.loop and self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.ui.update_transcription, current_full, False)
 
     async def _process_llm_stream(self, question: str) -> None:
         """Processa o streaming de tokens da Groq e envia para a UI de forma segura."""
@@ -74,10 +129,12 @@ class CopilotApp:
         try:
             async for token in self.llm_service.stream_response(question):
                 self.ui.append_ai_token(token)
+            self.ui.set_status("● Resposta Concluída", "#A6E3A1")
         except asyncio.CancelledError:
             logger.info("Task de geração de LLM cancelada para nova pergunta.")
         except Exception as e:
             logger.error(f"Erro no streaming LLM: {e}")
+            self.ui.set_status("● Erro na resposta", "#F38BA8")
 
     async def run(self) -> None:
         """Malha principal do evento asyncio unificada com o Tkinter event loop."""
