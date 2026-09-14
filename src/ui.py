@@ -20,12 +20,13 @@ class CopilotUI(ctk.CTk):
         self,
         title: str = "Interview Copilot",
         on_toggle_recording: Optional[callable] = None,
+        on_respond_now: Optional[callable] = None,
         on_clear: Optional[callable] = None,
     ) -> None:
         super().__init__()
 
         self.title(title)
-        self.geometry("500x380+100+100")
+        self.geometry("520x390+100+100")
         
         # Configurações de overlay
         self.overrideredirect(True)
@@ -33,6 +34,7 @@ class CopilotUI(ctk.CTk):
         self.attributes("-alpha", 0.92)  # Fundo escuro semi-transparente premium
 
         self.on_toggle_recording = on_toggle_recording
+        self.on_respond_now = on_respond_now
         self.on_clear = on_clear
 
         # Variáveis para permitir arrastar a janela
@@ -89,7 +91,7 @@ class CopilotUI(ctk.CTk):
         self.status_badge.bind("<Button-1>", self._start_drag)
         self.status_badge.bind("<B1-Motion>", self._drag)
 
-        # Barra de Controles (Gravar / Limpar)
+        # Barra de Controles (Gravar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.controls_frame.pack(fill="x", padx=12, pady=(6, 4))
 
@@ -105,6 +107,18 @@ class CopilotUI(ctk.CTk):
         )
         self.record_btn.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
+        self.respond_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="⚡ Responder Agora",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#89B4FA",
+            text_color="#11111B",
+            hover_color="#B4BEFE",
+            height=32,
+            command=self._handle_respond_now
+        )
+        self.respond_btn.pack(side="left", padx=(0, 6))
+
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
             text="🗑 Limpar",
@@ -112,7 +126,7 @@ class CopilotUI(ctk.CTk):
             fg_color="#313244",
             text_color="#CDD6F4",
             hover_color="#45475A",
-            width=80,
+            width=70,
             height=32,
             command=self._handle_clear
         )
@@ -170,11 +184,24 @@ class CopilotUI(ctk.CTk):
         if self.on_toggle_recording:
             self.on_toggle_recording()
 
+    def _handle_respond_now(self) -> None:
+        if self.on_respond_now:
+            self.on_respond_now()
+
     def _handle_clear(self) -> None:
         if self.on_clear:
             self.on_clear()
         else:
             self.clear_all()
+
+    def get_transcription_text(self) -> str:
+        """Retorna o texto atualmente exibido na caixa de transcrição, limpando prefixos."""
+        raw = self.transcription_textbox.get("1.0", "end").strip()
+        # Remove prefixos visuais como '✔ ' ou '🎙 '
+        for prefix in ("✔ ", "🎙 "):
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):].strip()
+        return raw
 
     def set_recording_state(self, is_recording: bool) -> None:
         """Atualiza visualmente o botão e badge de status de gravação."""

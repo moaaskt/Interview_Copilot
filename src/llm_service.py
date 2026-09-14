@@ -16,7 +16,7 @@ class LLMService:
             api_key=api_key,
             base_url="https://api.groq.com/openai/v1"
         )
-        self.model = model or os.getenv("GROQ_MODEL", "groq/compound-mini")
+        self.model = model or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
         self.system_prompt = (
             "Você é um Desenvolvedor Full Stack/Backend com ~3 anos de prática e primeiro emprego formal em 2025. "
             "Sua tarefa é gerar respostas para perguntas de entrevista técnica em tempo real.\n\n"
@@ -32,11 +32,12 @@ class LLMService:
             "adaptação rápida e uso de IA como apoio (sem substituir o entendimento técnico).\n"
             "- Pontos de Atenção (CRÍTICO): NÃO afirmar experiência profissional profunda com Go, Flutter, Angular ou GIS/BDGD.\n\n"
             "REGRAS DE RESPOSTA (CRÍTICO PARA LATÊNCIA E CREDIBILIDADE):\n"
-            "1. SEJA DIRETO: Máximo de 3 a 4 frases ou bullet points curtos. O usuário precisa ler isso em menos de 5 segundos.\n"
-            "2. ZERO ALUCINAÇÃO DE MÉTRICAS: NUNCA invente números de usuários, métricas de performance, velocidade de processamento, números de leads ou ganhos financeiros. Se não houver métrica real, foque na funcionalidade e no resultado qualitativo.\n"
+            "1. SEJA DIRETO: Máximo de 3 a 4 frases ou bullet points curtos. Responda imediatamente sem enrolação e sem tags de raciocínio.\n"
+            "2. ZERO ALUCINAÇÃO DE MÉTRICAS: NUNCA invente números de usuários, métricas de performance ou ganhos financeiros.\n"
             "3. ESTRUTURA PRÁTICA: Explique o conceito de forma simples, demonstre raciocínio prático e evite exagerar senioridade.\n"
-            "4. CONTORNO INTELIGENTE: Se perguntarem sobre Go, Angular ou Flutter, diga: \"Tenho conhecimento inicial/estudo nessa tecnologia, como no projeto Sherlock Scraper (Go), mas minha expertise profissional sólida está em PHP, Python e ecossistema JS/TS.\"\n"
-            "5. TOM DE VOZ: Direto, técnico, natural e humilde. Fale em primeira pessoa.\n\n"
+            "4. CONTORNO INTELIGENTE: Se perguntarem sobre Go, Angular ou Flutter, seja transparente dizendo que tem estudo inicial, mas foco profissional em PHP, Python e JS/TS.\n"
+            "5. PERGUNTAS GERAIS: Se for pergunta de conhecimentos gerais ou matemática, responda de forma objetiva e sucinta em 1 frase.\n"
+            "6. TOM DE VOZ: Direto, técnico, natural e humilde. Fale em primeira pessoa.\n\n"
             "EXEMPLO DE SAÍDA IDEAL:\n"
             "Pergunta: \"Como você lidou com regras de negócio complexas?\"\n"
             "Resposta: \"No projeto Evento Santo, lidei com regras complexas de inscrição, como lista de espera e substituições. Mapeei os estados no banco MySQL e implementei a lógica no CodeIgniter 4, garantindo que pagamentos e certificados fossem emitidos apenas após a validação correta da vaga.\""
@@ -44,11 +45,11 @@ class LLMService:
 
     async def stream_response(self, user_question: str) -> AsyncGenerator[str, None]:
         """
-        Envia a transcrição da pergunta para a API da OpenAI com stream=True
+        Envia a transcrição da pergunta para a API da Groq com stream=True
         e gera tokens em tempo real.
         """
         try:
-            logger.info(f"Gerando resposta LLM para a pergunta: {user_question}")
+            logger.info(f"Gerando resposta LLM ({self.model}) para: {user_question}")
             stream = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -56,6 +57,7 @@ class LLMService:
                     {"role": "user", "content": user_question},
                 ],
                 temperature=0.3,
+                max_tokens=250,
                 stream=True,
             )
 
@@ -65,5 +67,5 @@ class LLMService:
                     yield token
 
         except Exception as e:
-            logger.error(f"Erro ao comunicar com a OpenAI: {e}")
-            yield f"\n[Erro OpenAI: {str(e)}]"
+            logger.error(f"Erro ao comunicar com a Groq: {e}")
+            yield f"\n[Erro Groq: {str(e)}]"

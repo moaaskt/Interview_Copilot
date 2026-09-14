@@ -31,6 +31,7 @@ class CopilotApp:
 
         self.ui = CopilotUI(
             on_toggle_recording=self.toggle_recording,
+            on_respond_now=self.respond_now,
             on_clear=self.clear_session,
         )
         self.llm_service = LLMService(api_key=self.groq_key)
@@ -68,21 +69,34 @@ class CopilotApp:
         self.is_recording = False
         self.ui.set_recording_state(False)
         logger.info("⏹ Gravação finalizada.")
+        self.respond_now()
 
+    def respond_now(self) -> None:
+        """Dispara a geração de resposta com base na transcrição acumulada ou visível na tela."""
+        # Se ainda estiver gravando, encerra a captura
+        if self.is_recording:
+            self.is_recording = False
+            self.ui.set_recording_state(False)
+
+        # Prioriza o buffer acumulado; se vazio, pega o texto atualmente digitado/exibido na UI
         consolidated_question = " ".join(self.transcript_buffer).strip()
         if not consolidated_question:
+            consolidated_question = self.ui.get_transcription_text()
+
+        if not consolidated_question:
             self.ui.set_status("● Nenhuma fala capturada", "#F38BA8")
-            logger.warning("Nenhum texto transcrito no período de gravação.")
+            logger.warning("Nenhum texto disponível para responder.")
             return
 
         self.ui.update_transcription(consolidated_question, is_final=True)
         self.ui.set_status("⏳ Gerando resposta...", "#89B4FA")
+        logger.info(f"Disparando resposta para: '{consolidated_question}'")
 
         # Cancela requisição anterior do LLM caso haja uma em andamento
         if self.current_llm_task and not self.current_llm_task.done():
             self.current_llm_task.cancel()
 
-        # Dispara task assíncrona para streaming da resposta consolidada
+        # Dispara task assíncrona para streaming da resposta
         if self.loop and self.loop.is_running():
             self.current_llm_task = self.loop.create_task(self._process_llm_stream(consolidated_question))
 
