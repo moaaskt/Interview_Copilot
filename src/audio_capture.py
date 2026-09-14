@@ -98,11 +98,66 @@ class AudioCapture:
     # ==========================================
     # LÓGICA LINUX (sounddevice / PipeWire / PulseAudio)
     # ==========================================
+    def _configure_linux_pulse_source(self) -> None:
+        """
+        Configura a variável de ambiente PULSE_SOURCE caso ainda não esteja definida:
+        1. Se PULSE_SOURCE já existir no ambiente, respeita a escolha manual do usuário.
+        2. Caso contrário, busca via 'pactl list short sinks' o primeiro sink que NÃO esteja SUSPENDED (ex: RUNNING ou IDLE).
+        3. Se todos estiverem SUSPENDED ou pactl falhar, faz fallback para o sink padrão ('pactl get-default-sink').
+        """
+        existing_source = os.environ.get("PULSE_SOURCE")
+        if existing_source:
+            logger.info(f"[Linux] Respeitando PULSE_SOURCE pré-definido pelo usuário: {existing_source}")
+            return
+
+        chosen_source = None
+        reason = ""
+
+        # Tenta encontrar o primeiro sink ativo (não SUSPENDED)
+        try:
+            sinks_output = subprocess.check_output(
+                ["pactl", "list", "short", "sinks"],
+                stderr=subprocess.DEVNULL,
+                text=True
+            ).strip()
+
+            for line in sinks_output.splitlines():
+                parts = line.split()
+                if len(parts) >= 6:
+                    sink_name = parts[1]
+                    sink_state = parts[-1].upper()
+                    if sink_state != "SUSPENDED":
+                        chosen_source = f"{sink_name}.monitor"
+                        reason = f"sink ativo encontrado [{sink_name}] no estado '{sink_state}'"
+                        break
+        except Exception as e:
+            logger.debug(f"[Linux] Erro ao listar sinks via 'pactl list short sinks': {e}")
+
+        # Fallback para o sink padrão se nenhum ativo foi encontrado
+        if not chosen_source:
+            try:
+                default_sink = subprocess.check_output(
+                    ["pactl", "get-default-sink"],
+                    stderr=subprocess.DEVNULL,
+                    text=True
+                ).strip()
+                if default_sink:
+                    chosen_source = f"{default_sink}.monitor"
+                    reason = f"fallback para sink padrão do sistema [{default_sink}]"
+            except Exception as e:
+                logger.debug(f"[Linux] Não foi possível obter o sink padrão via pactl: {e}")
+
+        if chosen_source:
+            os.environ["PULSE_SOURCE"] = chosen_source
+            logger.info(f"[Linux] Definido PULSE_SOURCE={chosen_source} ({reason})")
+        else:
+            logger.warning("[Linux] Não foi possível determinar automaticamente o sink de monitor via pactl.")
+
     def _get_linux_device_index(self) -> Optional[int]:
         """
         Procura por dispositivos com 'monitor' no nome e max_input_channels > 0.
         Caso não encontre diretamente (comum no ALSA/PipeWire onde os monitores são
-        roteados via pulse/pipewire/default), configura PULSE_SOURCE com o sink padrão
+        roteados via pulse/pipewire/default), configura PULSE_SOURCE com o sink ativo
         e seleciona a interface PulseAudio/PipeWire.
         """
         devices = sd.query_devices()
@@ -110,28 +165,17 @@ class AudioCapture:
         # 1. Procura por dispositivo explícito com 'monitor' no nome
         for idx, dev in enumerate(devices):
             if dev.get("max_input_channels", 0) > 0 and "monitor" in dev.get("name", "").lower():
-                logger.info(f"[Linux] Dispositivo monitor encontrado: [{idx}] {dev['name']}")
+                logger.info(f"[Linux] Dispositivo monitor encontrado na lista do sounddevice: [{idx}] {dev['name']}")
                 return idx
 
-        # 2. Configura PULSE_SOURCE com o monitor do sink padrão do PulseAudio / PipeWire
-        try:
-            default_sink = subprocess.check_output(
-                ["pactl", "get-default-sink"],
-                stderr=subprocess.DEVNULL,
-                text=True
-            ).strip()
-            if default_sink:
-                monitor_source = f"{default_sink}.monitor"
-                os.environ["PULSE_SOURCE"] = monitor_source
-                logger.info(f"[Linux] Configurado PULSE_SOURCE={monitor_source} para captura de saída do sistema.")
-        except Exception as e:
-            logger.debug(f"[Linux] Não foi possível obter o sink padrão via pactl: {e}")
+        # 2. Configura PULSE_SOURCE de forma inteligente
+        self._configure_linux_pulse_source()
 
-        # 3. Seleciona o dispositivo PulseAudio, PipeWire ou default
+        # 3. Seleciona o dispositivo de roteamento PulseAudio, PipeWire ou default
         for preferred in ("pulse", "pipewire", "default"):
             for idx, dev in enumerate(devices):
                 if preferred in dev.get("name", "").lower() and dev.get("max_input_channels", 0) > 0:
-                    logger.info(f"[Linux] Usando dispositivo de roteamento [{idx}] {dev['name']}")
+                    logger.info(f"[Linux] Usando dispositivo de roteamento [{idx}] {dev['name']} com PULSE_SOURCE={os.environ.get('PULSE_SOURCE', 'não definido')}")
                     return idx
 
         logger.warning("[Linux] Dispositivo monitor específico não encontrado. Usando dispositivo padrão do sounddevice.")
