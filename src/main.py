@@ -13,6 +13,7 @@ from audio_capture import AudioCapture
 from transcriber import Transcriber
 from llm_service import LLMService
 from ui import CopilotUI
+from config_manager import ConfigManager
 
 # Configuração de Logging
 logging.basicConfig(
@@ -41,19 +42,33 @@ class CopilotApp:
             logger.error(f"Configuração incompleta no arquivo .env ({env_path}). Chave(s) ausente(s): {', '.join(missing)}")
             sys.exit(1)
 
+        self.config_manager = ConfigManager()
+
         self.ui = CopilotUI(
             on_toggle_recording=self.toggle_recording,
             on_respond_now=self.respond_now,
             on_clear=self.clear_session,
+            config_manager=self.config_manager,
+            on_quick_question=self.on_quick_question,
+            on_device_change=self.on_device_change,
+            on_llm_change=self.on_llm_change,
         )
-        self.llm_service = LLMService(api_key=self.groq_key)
+        self.llm_service = LLMService(
+            api_key=self.groq_key,
+            response_style=self.config_manager.response_style,
+            custom_persona=self.config_manager.custom_persona,
+        )
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
             on_interim_transcript=self.on_interim_transcript,
             on_final_transcript=self.on_final_transcript,
             on_connection_change=self.on_connection_change,
         )
-        self.audio_capture = AudioCapture(audio_callback=self.on_audio_data)
+        self.audio_capture = AudioCapture(
+            audio_callback=self.on_audio_data,
+            device_index=self.config_manager.audio_device_index,
+            device_name=self.config_manager.audio_device_name,
+        )
 
         self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
@@ -61,6 +76,30 @@ class CopilotApp:
         # Estado da gravação e buffer de transcrição consolidada
         self.is_recording = False
         self.transcript_buffer: list[str] = []
+
+    def on_quick_question(self, question: str) -> None:
+        """Manipula clique em pergunta rápida pré-configurada."""
+        if self.is_recording:
+            self.is_recording = False
+            self.ui.set_recording_state(False)
+
+        self.transcript_buffer = [question]
+        self.ui.update_transcription(question, is_final=True)
+        logger.info(f"Pergunta rápida selecionada: '{question}'")
+        self.respond_now()
+
+    def on_device_change(self, device_idx: Optional[int], device_name: str) -> None:
+        """Callback chamada quando o usuário altera o dispositivo de áudio na tela de configurações."""
+        logger.info(f"Alterando dispositivo de áudio para: [{device_idx}] {device_name}")
+        self.audio_capture.set_device(device_idx, self.loop, device_name=device_name)
+        self.ui.set_status(f"● Áudio: {device_name[:18]}", "#A6E3A1")
+
+    def on_llm_change(self, style: str, custom_persona: Optional[str]) -> None:
+        """Callback chamada quando o usuário altera o estilo de resposta ou persona na tela de configurações."""
+        logger.info(f"Atualizando configurações de IA: estilo='{style}'")
+        self.llm_service.set_response_style(style)
+        self.llm_service.set_system_prompt(custom_persona)
+        self.ui.set_status(f"● IA: {style.capitalize()}", "#89B4FA")
 
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""

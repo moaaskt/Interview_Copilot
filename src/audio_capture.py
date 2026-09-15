@@ -5,6 +5,8 @@ import subprocess
 import sys
 from typing import Callable, Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = sys.platform == "win32"
@@ -32,11 +34,16 @@ class AudioCapture:
         audio_callback: Callable[[bytes], None],
         sample_rate: int = 16000,
         chunk_duration: float = 0.1,
+        device_index: Optional[int | str] = None,
+        device_name: Optional[str] = None,
     ) -> None:
         self.audio_callback = audio_callback
         self.sample_rate = sample_rate
         self.chunk_size = int(sample_rate * chunk_duration)
+        self.device_index = device_index
+        self.device_name = device_name
         self.is_running = False
+        self._current_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Recursos Windows
         self._pa: Optional[any] = None
@@ -44,6 +51,51 @@ class AudioCapture:
 
         # Recursos Linux
         self._linux_stream = None
+
+    @staticmethod
+    def list_available_devices() -> list[dict]:
+        """Enumera dispositivos de áudio disponíveis para captura na plataforma atual."""
+        devices = []
+        if IS_WINDOWS:
+            try:
+                pa = pyaudio.PyAudio()
+                try:
+                    for d in pa.get_loopback_device_info_generator():
+                        devices.append({
+                            "index": d["index"],
+                            "name": d["name"],
+                            "type": "loopback"
+                        })
+                except Exception as e:
+                    logger.warning(f"Erro ao listar loopbacks WASAPI: {e}")
+
+                # Se não encontrou loopbacks, adiciona dispositivos de entrada regulares
+                if not devices:
+                    for idx in range(pa.get_device_count()):
+                        info = pa.get_device_info_by_index(idx)
+                        if info.get("maxInputChannels", 0) > 0:
+                            devices.append({
+                                "index": info["index"],
+                                "name": info["name"],
+                                "type": "input"
+                            })
+                pa.terminate()
+            except Exception as e:
+                logger.error(f"Erro ao enumerar dispositivos no Windows: {e}")
+        else:
+            if sd is not None:
+                try:
+                    sd_devs = sd.query_devices()
+                    for idx, dev in enumerate(sd_devs):
+                        if dev.get("max_input_channels", 0) > 0:
+                            devices.append({
+                                "index": idx,
+                                "name": dev["name"],
+                                "type": "input"
+                            })
+                except Exception as e:
+                    logger.error(f"Erro ao enumerar dispositivos via sounddevice: {e}")
+        return devices
 
     # ==========================================
     # LÓGICA WINDOWS (PyAudioWPatch / WASAPI)
@@ -66,31 +118,85 @@ class AudioCapture:
 
         return default_speakers
 
+    def _find_windows_loopback(self, pa) -> dict:
+        """Localiza com resiliência o dispositivo loopback WASAPI correspondente (por nome, índice ou default)."""
+        loopbacks = list(pa.get_loopback_device_info_generator())
+        if not loopbacks:
+            logger.warning("[Windows] Nenhum dispositivo loopback WASAPI encontrado.")
+            return self._get_windows_loopback_device(pa)
+
+        # 1. Se foi passado device_name específico, tenta encontrar por nome entre os loopbacks
+        if self.device_name and self.device_name != "Padrão do Sistema":
+            clean_target = self.device_name.replace("[Loopback]", "").strip().lower()
+            for lb in loopbacks:
+                clean_lb = lb["name"].replace("[Loopback]", "").strip().lower()
+                if clean_target in clean_lb or clean_lb in clean_target:
+                    logger.info(f"[Windows] Dispositivo loopback resolvido por nome '{self.device_name}': [{lb['index']}] {lb['name']}")
+                    return lb
+
+        # 2. Se foi passado device_index, verifica se corresponde a um loopback válido
+        if self.device_index is not None:
+            try:
+                idx_int = int(self.device_index)
+                for lb in loopbacks:
+                    if lb["index"] == idx_int:
+                        logger.info(f"[Windows] Dispositivo loopback resolvido por índice [{idx_int}]: {lb['name']}")
+                        return lb
+            except Exception:
+                pass
+
+        # 3. Fallback: usa o loopback padrão da saída ativa do Windows
+        logger.info("[Windows] Usando dispositivo loopback padrão do Windows.")
+        return self._get_windows_loopback_device(pa)
+
     def _start_windows(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio no Windows usando WASAPI loopback."""
         self._pa = pyaudio.PyAudio()
         try:
-            device_info = self._get_windows_loopback_device(self._pa)
-            logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
+            device_info = self._find_windows_loopback(self._pa)
+            logger.info(f"[Windows] Iniciando captura loopback no dispositivo: [{device_info['index']}] {device_info['name']}")
 
-            channels = 1
-            rate = self.sample_rate
+            # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
+            native_channels = int(device_info.get("maxInputChannels", 2)) or 1
+            native_rate = int(device_info.get("defaultSampleRate", 48000)) or self.sample_rate
+            target_rate = self.sample_rate
+
+            frames_per_buffer = int(native_rate * (self.chunk_size / self.sample_rate))
 
             def pcm_callback(in_data, frame_count, time_info, status):
                 if self.is_running and in_data:
-                    loop.call_soon_threadsafe(self.audio_callback, in_data)
+                    try:
+                        samples = np.frombuffer(in_data, dtype=np.int16)
+                        # Se multi-canal (estéreo/5.1), faz downmix para mono
+                        if native_channels > 1 and len(samples) >= native_channels:
+                            samples = samples.reshape(-1, native_channels).mean(axis=1).astype(np.int16)
+
+                        # Se taxa de amostragem nativa for diferente de 16kHz, reamostra com interpolação linear rápida
+                        if native_rate != target_rate and len(samples) > 0:
+                            num_target = int(len(samples) * target_rate / native_rate)
+                            if num_target > 0:
+                                indices = np.linspace(0, len(samples) - 1, num_target)
+                                samples = np.interp(indices, np.arange(len(samples)), samples).astype(np.int16)
+
+                        out_bytes = samples.tobytes()
+                    except Exception as e:
+                        logger.debug(f"[Windows Audio] Erro na conversão de áudio: {e}")
+                        out_bytes = in_data
+
+                    loop.call_soon_threadsafe(self.audio_callback, out_bytes)
                 return (None, pyaudio.paContinue)
 
             self._win_stream = self._pa.open(
                 format=pyaudio.paInt16,
-                channels=channels,
-                rate=rate,
+                channels=native_channels,
+                rate=native_rate,
                 input=True,
                 input_device_index=device_info["index"],
-                frames_per_buffer=self.chunk_size,
+                frames_per_buffer=frames_per_buffer,
                 stream_callback=pcm_callback,
             )
             self._win_stream.start_stream()
+            logger.info(f"[Windows] Captura WASAPI iniciada com sucesso ({native_rate}Hz, {native_channels} canais -> reamostrado para {target_rate}Hz mono)")
         except Exception as e:
             logger.error(f"[Windows] Erro ao inicializar captura WASAPI: {e}")
             self.stop()
@@ -161,6 +267,14 @@ class AudioCapture:
         Garante a configuração adequada do PULSE_SOURCE e seleciona o dispositivo
         de entrada correto do sounddevice (pulse / pipewire / default).
         """
+        if self.device_index is not None:
+            try:
+                idx = int(self.device_index)
+                logger.info(f"[Linux] Usando dispositivo de entrada selecionado: [{idx}]")
+                return idx
+            except Exception as e:
+                logger.warning(f"[Linux] Falha ao usar índice {self.device_index}: {e}")
+
         # 1. Configura PULSE_SOURCE (respeitando se já existir ou detectando RUNNING)
         self._configure_linux_pulse_source()
 
@@ -222,11 +336,29 @@ class AudioCapture:
     # ==========================================
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio dependendo da plataforma."""
+        self._current_loop = loop
         self.is_running = True
         if IS_WINDOWS:
             self._start_windows(loop)
         else:
             self._start_linux(loop)
+
+    def set_device(
+        self,
+        device_index: Optional[int | str],
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        device_name: Optional[str] = None,
+    ) -> None:
+        """Altera o dispositivo de captura ativo e reinicia o stream."""
+        self.device_index = device_index
+        if device_name is not None:
+            self.device_name = device_name
+        target_loop = loop or self._current_loop
+        logger.info(f"Alterando dispositivo de áudio para [{device_index}] {self.device_name}...")
+        if self.is_running:
+            self.stop()
+        if target_loop:
+            self.start(target_loop)
 
     def stop(self) -> None:
         """Para e encerra os recursos de áudio."""
