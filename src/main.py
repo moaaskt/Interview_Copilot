@@ -1,7 +1,12 @@
 import os
 import sys
+
+# Adiciona o diretório src ao sys.path para garantir resolução robusta de módulos
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import asyncio
 import logging
+import numpy as np
 from dotenv import load_dotenv
 
 from audio_capture import AudioCapture
@@ -39,6 +44,7 @@ class CopilotApp:
             api_key=self.deepgram_key,
             on_interim_transcript=self.on_interim_transcript,
             on_final_transcript=self.on_final_transcript,
+            on_connection_change=self.on_connection_change,
         )
         self.audio_capture = AudioCapture(audio_callback=self.on_audio_data)
 
@@ -109,8 +115,34 @@ class CopilotApp:
             self.current_llm_task.cancel()
         logger.info("Sessão limpa pelo usuário.")
 
+    def on_connection_change(self, is_connected: bool) -> None:
+        """Callback chamada quando o estado da conexão com o Deepgram se altera."""
+        if not is_connected:
+            if self.loop and self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.ui.set_status, "🔄 Reconectando áudio...", "#F9E2AF")
+            else:
+                self.ui.set_status("🔄 Reconectando áudio...", "#F9E2AF")
+            logger.warning("Deepgram desconectado. Tentativa de reconexão automática em andamento...")
+        else:
+            if self.loop and self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.ui.set_status, "● Pronto", "#A6ADC8")
+            else:
+                self.ui.set_status("● Pronto", "#A6ADC8")
+            logger.info("Deepgram conectado e operacional.")
+
     def on_audio_data(self, data: bytes) -> None:
-        """Callback chamada a cada chunk de áudio capturado. Envia apenas se estiver gravando."""
+        """Callback chamada a cada chunk de áudio capturado. Calcula RMS para o VU-meter e envia áudio se gravando."""
+        try:
+            samples = np.frombuffer(data, dtype=np.int16)
+            rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2)))
+        except Exception:
+            rms = 0.0
+
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.update_audio_level, rms)
+        else:
+            self.ui.update_audio_level(rms)
+
         if self.is_recording:
             self.transcriber.send_audio(data)
 

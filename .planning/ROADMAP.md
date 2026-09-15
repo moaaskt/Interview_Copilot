@@ -20,4 +20,4 @@
 - **Entregas**:
   - Mini VU-meter ou indicador de pulso luminoso baseado no RMS do sinal de áudio.
   - Indicador de estado de conexão WebSocket Deepgram com tentativa de reconexão transparente.
-- **Status**: Não iniciada.
+- **Status**: Concluída.

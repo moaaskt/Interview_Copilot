@@ -43,7 +43,7 @@ Garantir total confiabilidade e tranquilidade ao usuário durante a entrevista: 
 ---
 
 ## 🔍 Critérios de Aceitação / Verificação
-- [ ] O mini VU-meter exibe feedback visual com alteração de intensidade em tempo real conforme o nível de áudio recebido.
-- [ ] Silêncio mantém o indicador discreto (`🎙 ···`), sem poluição visual.
-- [ ] Quedas no WebSocket da Deepgram disparam notificação visual e tentativa de reconexão sem quebrar o app.
-- [ ] 100% dos testes unitários e de regressão aprovados.
+- [x] O mini VU-meter exibe feedback visual com alteração de intensidade em tempo real conforme o nível de áudio recebido.
+- [x] Silêncio mantém o indicador discreto (`🎙 ···`), sem poluição visual.
+- [x] Quedas no WebSocket da Deepgram disparam notificação visual e tentativa de reconexão sem quebrar o app.
+- [x] 100% dos testes unitários e de regressão aprovados.

@@ -82,7 +82,18 @@ class CopilotUI(ctk.CTk):
             bg="#181825",
             cursor="fleur"
         )
-        self.status_badge.pack(side="left", padx=8)
+        self.status_badge.pack(side="left", padx=(8, 4))
+
+        # Indicador de Nível de Áudio (Mini VU-Meter)
+        self.audio_meter_label = tk.Label(
+            self.header_frame,
+            text="🎙 ···",
+            font=("Helvetica", 9),
+            fg="#585B70",
+            bg="#181825",
+            cursor="fleur"
+        )
+        self.audio_meter_label.pack(side="left", padx=4)
 
         # Botão para fechar
         self.close_btn = ctk.CTkButton(
@@ -122,7 +133,7 @@ class CopilotUI(ctk.CTk):
         self.opacity_btn.pack(side="right", padx=2)
 
         # Eventos do mouse para arrastar a janela sem barra de título
-        for widget in (self.header_frame, self.title_label, self.status_badge):
+        for widget in (self.header_frame, self.title_label, self.status_badge, self.audio_meter_label):
             widget.bind("<Button-1>", self._start_drag)
             widget.bind("<B1-Motion>", self._drag)
 
@@ -361,4 +372,22 @@ class CopilotUI(ctk.CTk):
         """Limpa ambas as caixas de texto."""
         self.clear_transcription()
         self.clear_ai_response()
+
+    def update_audio_level(self, rms: float) -> None:
+        """Atualiza a representação visual do mini VU-meter de áudio no HUD."""
+        if rms < 150:
+            text = "🎙 ···"
+            color = "#585B70"
+        elif rms < 800:
+            text = "🎙 ▃··"
+            color = "#94E2D5"
+        elif rms < 2500:
+            text = "🎙 ▃▅·"
+            color = "#A6E3A1"
+        else:
+            text = "🎙 ▃▅█"
+            color = "#89B4FA"
+
+        self.audio_meter_label.configure(text=text, fg=color)
+
 
