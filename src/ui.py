@@ -37,10 +37,17 @@ class CopilotUI(ctk.CTk):
         self.on_respond_now = on_respond_now
         self.on_clear = on_clear
 
-        # Variáveis para controle de arrasto
         self._offset_x = 0
         self._offset_y = 0
         self._is_recording = False
+
+        # Configuração de Opacidade Dinâmica
+        self._opacity_levels = [0.92, 1.0, 0.75, 0.85]
+        self._current_opacity_idx = 0
+
+        # Presets de Posicionamento Rápido
+        self._position_presets = ["top-center", "top-right", "top-left", "center"]
+        self._current_position_idx = 0
 
         self._setup_ui()
 
@@ -87,7 +94,32 @@ class CopilotUI(ctk.CTk):
             hover_color="#F38BA8",
             command=self.destroy
         )
-        self.close_btn.pack(side="right", padx=5)
+        self.close_btn.pack(side="right", padx=(2, 6))
+
+        # Botão para Presets de Ancoragem Rápida
+        self.preset_pos_btn = ctk.CTkButton(
+            self.header_frame,
+            text="🎯",
+            width=28,
+            height=24,
+            fg_color="transparent",
+            hover_color="#313244",
+            command=self.cycle_window_position
+        )
+        self.preset_pos_btn.pack(side="right", padx=2)
+
+        # Botão para Ciclo de Opacidade
+        self.opacity_btn = ctk.CTkButton(
+            self.header_frame,
+            text=f"👓 {int(self._opacity_levels[self._current_opacity_idx] * 100)}%",
+            font=("Helvetica", 9),
+            width=58,
+            height=24,
+            fg_color="transparent",
+            hover_color="#313244",
+            command=self.cycle_opacity
+        )
+        self.opacity_btn.pack(side="right", padx=2)
 
         # Eventos do mouse para arrastar a janela sem barra de título
         for widget in (self.header_frame, self.title_label, self.status_badge):
@@ -180,6 +212,8 @@ class CopilotUI(ctk.CTk):
         self.bind_all("<Control-Return>", self._handle_respond_now)
         self.bind_all("<Escape>", self._handle_clear)
         self.bind_all("<Control-BackSpace>", self._handle_clear)
+        self.bind_all("<F8>", self.cycle_window_position)
+        self.bind_all("<F10>", self.cycle_opacity)
 
     def _bind_drag_events(self, widget) -> None:
         """Vincula eventos de arrastar diretamente ao widget."""
@@ -261,9 +295,59 @@ class CopilotUI(ctk.CTk):
         self.transcription_textbox.see("end")
 
     def append_ai_token(self, token: str) -> None:
-        """Adiciona token em tempo real na caixa de resposta da IA."""
+        """Adiciona token em tempo real na caixa de resposta da IA com auto-scroll adaptativo."""
+        # Se o usuário rolou manualmente para cima, pausa o auto-scroll para não sequestrar a leitura
+        should_scroll = True
+        try:
+            if hasattr(self.ai_textbox, "_textbox") and self.ai_textbox._textbox.winfo_height() > 10:
+                _, bottom = self.ai_textbox._textbox.yview()
+                if bottom < 0.98:
+                    should_scroll = False
+        except Exception:
+            should_scroll = True
+
         self.ai_textbox.insert("end", token)
-        self.ai_textbox.see("end")
+
+        if should_scroll:
+            self.ai_textbox.see("end")
+
+    def cycle_opacity(self, event=None) -> Optional[str]:
+        """Alterna ciclicamente a opacidade da janela HUD."""
+        self._current_opacity_idx = (self._current_opacity_idx + 1) % len(self._opacity_levels)
+        val = self._opacity_levels[self._current_opacity_idx]
+        self.attributes("-alpha", val)
+        pct = int(val * 100)
+        self.opacity_btn.configure(text=f"👓 {pct}%")
+        logger.info(f"Opacidade alterada para {pct}%")
+        return "break"
+
+    def cycle_window_position(self, event=None) -> Optional[str]:
+        """Reposiciona a janela HUD rapidamente nos 4 presets estratégicos de tela."""
+        preset = self._position_presets[self._current_position_idx]
+        self._current_position_idx = (self._current_position_idx + 1) % len(self._position_presets)
+
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w = 520
+        h = 390
+
+        if preset == "top-center":
+            # Ancorado logo abaixo da webcam para contato visual direto
+            x = max(0, (sw - w) // 2)
+            y = 20
+        elif preset == "top-right":
+            x = max(0, sw - w - 20)
+            y = 20
+        elif preset == "top-left":
+            x = 20
+            y = 20
+        else:  # "center"
+            x = max(0, (sw - w) // 2)
+            y = max(0, (sh - h) // 2)
+
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        logger.info(f"Janela HUD posicionada em '{preset}' ({x}, {y})")
+        return "break"
 
     def clear_ai_response(self) -> None:
         """Limpa a caixa de resposta da IA para receber nova resposta."""

@@ -27,3 +27,13 @@
 ### 4. Testes Automatizados
 - Executar: `./venv/bin/python -m unittest tests/test_ui_ux_overlay.py`
 - Todos os testes devem passar com código de saída 0.
+
+## Resultados da Verificação
+- **Testes Automatizados (`tests/test_ui_ux_overlay.py`)**: 5 testes executados e aprovados com 100% de sucesso.
+  - `test_cycle_opacity` ✅
+  - `test_cycle_window_position` ✅
+  - `test_shortcuts_f8_and_f10_bound` ✅
+  - `test_adaptive_auto_scroll_following_tokens` ✅
+  - `test_adaptive_auto_scroll_pauses_when_scrolled_up` ✅
+- **Regressão Global (`tests/`)**: 11 testes executados e aprovados (0 falhas).
+- **Status da Fase**: Concluída e Validada.

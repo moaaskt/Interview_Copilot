@@ -43,7 +43,7 @@ Aprimorar a experiência visual e conforto de leitura durante entrevistas ao viv
 ---
 
 ## 🔍 Critérios de Aceitação / Verificação
-- [ ] Auto-scroll rola automaticamente para tokens novos apenas se o usuário estiver no fim da caixa.
-- [ ] O botão de opacidade no cabeçalho exibe a porcentagem e clica/atrito com `<F10>` altera o canal alfa.
-- [ ] O botão de ancoragem `🎯` e atalho `<F8>` reposicionam a janela dinamicamente nos 4 presets de tela.
-- [ ] Bateria de testes unitários aprovada com 100% de sucesso.
+- [x] Auto-scroll rola automaticamente para tokens novos apenas se o usuário estiver no fim da caixa.
+- [x] O botão de opacidade no cabeçalho exibe a porcentagem e clica/atrito com `<F10>` altera o canal alfa.
+- [x] O botão de ancoragem `🎯` e atalho `<F8>` reposicionam a janela dinamicamente nos 4 presets de tela.
+- [x] Bateria de testes unitários aprovada com 100% de sucesso.

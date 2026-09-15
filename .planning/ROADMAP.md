@@ -13,7 +13,7 @@
   - Auto-scroll adaptativo nos widgets de texto para tokens da Groq.
   - Controle de opacidade dinâmico (slider sutil ou clique de ciclo 80% -> 90% -> 100%).
   - Presets de ancoragem de janela (ex: centro superior próximo à câmera).
-- **Status**: Não iniciada.
+- **Status**: Concluída.
 
 ## Fase 3: Feedback Visual de Áudio & Resiliência
 - **Objetivo**: Garantir segurança total ao usuário de que o áudio está sendo captado antes de falar.
