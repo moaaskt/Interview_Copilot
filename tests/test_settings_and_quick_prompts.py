@@ -178,6 +178,11 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         app.llm_service.set_response_style.assert_called_with("tecnica")
         app.llm_service.set_system_prompt.assert_called_with("Nova Persona")
 
+        # Alteração de Atalhos Globais
+        app.hotkey_manager = MagicMock()
+        app.on_hotkeys_change({"toggle_recording": "<Control-g>"})
+        app.hotkey_manager.update_hotkeys.assert_called_with({"toggle_recording": "<Control-g>"})
+
     def test_key_capture_parsing_and_formatting(self):
         try:
             from settings_window import format_tk_to_user, parse_key_event
@@ -206,6 +211,24 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         tk_bind_f, user_repr_f = parse_key_event(MockEvent("F11", 0))
         self.assertEqual(tk_bind_f, "<F11>")
         self.assertEqual(user_repr_f, "F11")
+
+    def test_hotkey_manager_global_conversion_and_dispatch(self):
+        try:
+            from hotkey_manager import HotkeyManager, to_pynput_hotkey
+        except ImportError:
+            from src.hotkey_manager import HotkeyManager, to_pynput_hotkey
+
+        self.assertEqual(to_pynput_hotkey("<Control-space>"), "<ctrl>+<space>")
+        self.assertEqual(to_pynput_hotkey("<Control-Return>"), "<ctrl>+<enter>")
+        self.assertEqual(to_pynput_hotkey("<Escape>"), "<esc>")
+        self.assertEqual(to_pynput_hotkey("<F12>"), "<f12>")
+        self.assertEqual(to_pynput_hotkey("<Control-Shift-r>"), "<ctrl>+<shift>+r")
+
+        called = []
+        callbacks = {"toggle_recording": lambda: called.append("toggled")}
+        mgr = HotkeyManager(callbacks=callbacks, hotkeys={"toggle_recording": "<Control-space>"})
+        mgr._dispatch_callback("toggle_recording")
+        self.assertEqual(called, ["toggled"])
 
 
 if __name__ == "__main__":

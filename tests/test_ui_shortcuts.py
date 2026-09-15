@@ -9,10 +9,24 @@ class TestCopilotUIShortcuts(unittest.TestCase):
         self.respond_mock = MagicMock()
         self.clear_mock = MagicMock()
 
+        mock_cfg = MagicMock()
+        mock_cfg.hotkeys = {
+            "toggle_recording": "<Control-space>",
+            "toggle_recording_alt": "<F9>",
+            "respond_now": "<Control-Return>",
+            "clear_session": "<Escape>",
+            "clear_session_alt": "<Control-BackSpace>",
+            "cycle_position": "<F8>",
+            "cycle_opacity": "<F10>",
+            "open_settings": "<F12>",
+        }
+        mock_cfg.quick_questions = []
+
         self.app = CopilotUI(
             on_toggle_recording=self.toggle_mock,
             on_respond_now=self.respond_mock,
             on_clear=self.clear_mock,
+            config_manager=mock_cfg,
         )
 
     def tearDown(self):

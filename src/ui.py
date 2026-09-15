@@ -32,6 +32,7 @@ class CopilotUI(ctk.CTk):
         on_quick_question: Optional[Callable[[str], None]] = None,
         on_device_change: Optional[Callable[[Optional[int], str], None]] = None,
         on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
+        on_hotkeys_change: Optional[Callable[[dict], None]] = None,
     ) -> None:
         super().__init__()
 
@@ -50,6 +51,7 @@ class CopilotUI(ctk.CTk):
         self.on_quick_question = on_quick_question
         self.on_device_change = on_device_change
         self.on_llm_change = on_llm_change
+        self.on_hotkeys_change = on_hotkeys_change
 
         self.settings_window: Optional[SettingsWindow] = None
 
@@ -431,6 +433,9 @@ class CopilotUI(ctk.CTk):
 
         self.respond_btn.configure(text=f"⚡ Responder [{k_resp}]")
         self.clear_btn.configure(text=f"🗑 Limpar [{k_clear}]")
+
+        if self.on_hotkeys_change:
+            self.on_hotkeys_change(hotkeys_dict)
 
     def _bind_drag_events(self, widget) -> None:
         """Vincula eventos de arrastar diretamente ao widget."""
