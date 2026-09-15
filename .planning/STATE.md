@@ -3,7 +3,7 @@
 ## Status Atual
 - **Projeto**: Interview Copilot (`helpIA`)
 - **Fase Ativa**: Fase 2 - Refinamento de UX do Overlay & Auto-scroll Inteligente
-- **Próximo Passo**: Iniciar planejamento da Fase 2 (`/gsd-plan-phase 2`)
+- **Próximo Passo**: Executar a Fase 2 (`/gsd-execute-phase 2`)
 
 ## Marcos Concluídos
 - [x] Mapeamento completo do codebase (`.planning/codebase/`)
