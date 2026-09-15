@@ -41,24 +41,24 @@ class CopilotUI(ctk.CTk):
         self._offset_y = 0
         self._is_recording = False
 
-        # Perfis de Visibilidade / Opacidade Dinâmica (compatível com Linux Wayland/X11 e Windows)
+        # Perfis de Visibilidade / Opacidade Dinâmica (Alto contraste garantido)
         self._opacity_profiles = [
             {
                 "alpha": 0.92,
                 "label": "👓 92% Padrão",
-                "main_bg": "#1E1E2E",
-                "header_bg": "#181825",
-                "textbox_bg": "#11111B",
-                "ai_text": "#A6E3A1",
-                "tx_text": "#CDD6F4",
+                "main_bg": "#181825",
+                "header_bg": "#11111B",
+                "textbox_bg": "#0D0E15",
+                "ai_text": "#50FA7B",
+                "tx_text": "#FFFFFF",
                 "border": "#313244",
             },
             {
                 "alpha": 1.0,
                 "label": "👓 100% Foco",
-                "main_bg": "#181825",
-                "header_bg": "#11111B",
-                "textbox_bg": "#0D0E15",
+                "main_bg": "#11111B",
+                "header_bg": "#08080C",
+                "textbox_bg": "#040406",
                 "ai_text": "#50FA7B",
                 "tx_text": "#FFFFFF",
                 "border": "#89B4FA",
@@ -66,22 +66,22 @@ class CopilotUI(ctk.CTk):
             {
                 "alpha": 0.75,
                 "label": "👓 75% Discreto",
-                "main_bg": "#0F0F17",
-                "header_bg": "#090A0F",
-                "textbox_bg": "#06060A",
-                "ai_text": "#73B88A",
-                "tx_text": "#9399B2",
-                "border": "#1E1E2E",
+                "main_bg": "#181825",
+                "header_bg": "#11111B",
+                "textbox_bg": "#0D0E15",
+                "ai_text": "#50FA7B",
+                "tx_text": "#FFFFFF",
+                "border": "#45475A",
             },
             {
                 "alpha": 0.85,
                 "label": "👓 85% Suave",
-                "main_bg": "#161622",
+                "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
-                "ai_text": "#8ADAA8",
-                "tx_text": "#BAC2DE",
-                "border": "#272838",
+                "ai_text": "#50FA7B",
+                "tx_text": "#FFFFFF",
+                "border": "#313244",
             },
         ]
         self._current_opacity_idx = 0
@@ -90,13 +90,12 @@ class CopilotUI(ctk.CTk):
         self._position_presets = ["top-center", "top-right", "top-left", "center"]
         self._current_position_idx = 0
 
-        # Coordenadas do arrasto suave
-        self._drag_mouse_x = 0
-        self._drag_mouse_y = 0
-        self._drag_win_x = 0
-        self._drag_win_y = 0
+        # Offsets para arrasto 1:1 perfeitamente sincronizado com o ponteiro
+        self._drag_offset_x: Optional[int] = None
+        self._drag_offset_y: Optional[int] = None
 
         self._setup_ui()
+        self._init_after_id = self.after(100, lambda: self._apply_opacity(self._opacity_profiles[self._current_opacity_idx]["alpha"]))
 
     def _setup_ui(self) -> None:
         """Cria e posiciona os componentes da interface."""
@@ -179,10 +178,11 @@ class CopilotUI(ctk.CTk):
         )
         self.opacity_btn.pack(side="right", padx=2)
 
-        # Eventos do mouse para arrastar a janela sem travar nem saltar
-        for widget in (self.header_frame, self.title_label):
+        # Eventos do mouse para arrastar a janela de forma 1:1, suave e sem saltos
+        for widget in (self.header_frame, self.title_label, self.status_badge, self.audio_meter_label):
             widget.bind("<Button-1>", self._start_drag)
             widget.bind("<B1-Motion>", self._drag)
+            widget.bind("<ButtonRelease-1>", self._stop_drag)
 
         # Barra de Controles (Gravar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -277,22 +277,29 @@ class CopilotUI(ctk.CTk):
         """Vincula eventos de arrastar diretamente ao widget."""
         widget.bind("<Button-1>", self._start_drag)
         widget.bind("<B1-Motion>", self._drag)
+        widget.bind("<ButtonRelease-1>", self._stop_drag)
 
     def _start_drag(self, event) -> Optional[str]:
-        """Salva a posição inicial de tela do ponteiro e da janela para arrasto relativo suave."""
-        self._drag_mouse_x = event.x_root
-        self._drag_mouse_y = event.y_root
-        self._drag_win_x = self.winfo_x()
-        self._drag_win_y = self.winfo_y()
+        """Salva o offset exato do ponteiro em relação à janela para arrasto 1:1 perfeito."""
+        pointer_x, pointer_y = self.winfo_pointerxy()
+        self._drag_offset_x = pointer_x - self.winfo_x()
+        self._drag_offset_y = pointer_y - self.winfo_y()
         return "break"
 
     def _drag(self, event) -> Optional[str]:
-        """Calcula deslocamento relativo e move a janela suavemente sem travar o ponteiro."""
-        dx = event.x_root - self._drag_mouse_x
-        dy = event.y_root - self._drag_mouse_y
-        new_x = self._drag_win_x + dx
-        new_y = self._drag_win_y + dy
-        self.geometry(f"520x390+{new_x}+{new_y}")
+        """Move a janela acompanhando 1:1 o cursor do mouse sem aceleração nem saltos."""
+        if getattr(self, "_drag_offset_x", None) is None or getattr(self, "_drag_offset_y", None) is None:
+            return "break"
+        pointer_x, pointer_y = self.winfo_pointerxy()
+        new_x = pointer_x - self._drag_offset_x
+        new_y = pointer_y - self._drag_offset_y
+        self.geometry(f"+{new_x}+{new_y}")
+        return "break"
+
+    def _stop_drag(self, event=None) -> Optional[str]:
+        """Finaliza o arrasto e reseta os offsets."""
+        self._drag_offset_x = None
+        self._drag_offset_y = None
         return "break"
 
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
@@ -375,18 +382,61 @@ class CopilotUI(ctk.CTk):
         if should_scroll:
             self.ai_textbox.see("end")
 
-    def cycle_opacity(self, event=None) -> Optional[str]:
-        """Alterna ciclicamente a opacidade e o tema visual (stealth/densidade) da janela HUD."""
-        self._current_opacity_idx = (self._current_opacity_idx + 1) % len(self._opacity_profiles)
-        prof = self._opacity_profiles[self._current_opacity_idx]
-
-        # 1. Aplica opacidade nativa de janela (quando suportada pelo compositor/OS)
+    def _apply_opacity(self, alpha: float) -> None:
+        """
+        Aplica opacidade real à janela.
+        Compatível nativamente com Windows e macOS (-alpha), e Linux X11/XWayland
+        através da propriedade _NET_WM_WINDOW_OPACITY via xprop.
+        """
         try:
-            self.attributes("-alpha", prof["alpha"])
+            if not self.winfo_exists():
+                return
+        except Exception:
+            return
+
+        # 1. Atributo padrão Tkinter (Windows, macOS)
+        try:
+            self.attributes("-alpha", alpha)
         except Exception:
             pass
 
-        # 2. Atualiza estilos visuais dinamicamente (garante feedback visual imediato até no Wayland/COSMIC)
+        # 2. X11 / XWayland via xprop para compositores Linux
+        try:
+            import subprocess
+            val = int(alpha * 0xFFFFFFFF)
+            wid = self.winfo_id()
+            targets = [str(wid)]
+            try:
+                out = subprocess.check_output(
+                    ["xwininfo", "-id", str(wid), "-children"],
+                    text=True,
+                    stderr=subprocess.DEVNULL
+                )
+                for line in out.splitlines():
+                    if "Parent window id:" in line:
+                        parent_id = line.split("Parent window id:")[1].strip().split()[0]
+                        targets.append(parent_id)
+            except Exception:
+                pass
+
+            for t in targets:
+                subprocess.run(
+                    ["xprop", "-id", t, "-f", "_NET_WM_WINDOW_OPACITY", "32c", "-set", "_NET_WM_WINDOW_OPACITY", str(val)],
+                    stderr=subprocess.DEVNULL,
+                    check=False
+                )
+        except Exception as e:
+            logger.debug(f"Falha ao aplicar opacidade via xprop: {e}")
+
+    def cycle_opacity(self, event=None) -> Optional[str]:
+        """Alterna ciclicamente a opacidade real e o tema visual da janela HUD."""
+        self._current_opacity_idx = (self._current_opacity_idx + 1) % len(self._opacity_profiles)
+        prof = self._opacity_profiles[self._current_opacity_idx]
+
+        # 1. Aplica transparência real na janela (Windows/macOS e Linux)
+        self._apply_opacity(prof["alpha"])
+
+        # 2. Atualiza estilos visuais com alto contraste garantido
         self.main_frame.configure(fg_color=prof["main_bg"], border_color=prof["border"])
         self.header_frame.configure(bg=prof["header_bg"])
         self.title_label.configure(bg=prof["header_bg"])
@@ -492,5 +542,14 @@ class CopilotUI(ctk.CTk):
             color = "#89B4FA"
 
         self.audio_meter_label.configure(text=text, fg=color)
+
+    def destroy(self) -> None:
+        """Limpa timers pendentes e encerra a janela."""
+        if hasattr(self, "_init_after_id") and self._init_after_id:
+            try:
+                self.after_cancel(self._init_after_id)
+            except Exception:
+                pass
+        super().destroy()
 
 

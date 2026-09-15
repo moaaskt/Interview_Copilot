@@ -68,16 +68,28 @@ class TestCopilotUIUXOverlay(unittest.TestCase):
         self.app.ai_textbox.see.assert_not_called()
 
     def test_drag_smooth_delta_calculation(self):
-        mock_event_click = MagicMock(x_root=1000, y_root=500)
+        self.app.winfo_pointerxy = MagicMock(return_value=(1050, 520))
+        self.app.winfo_x = MagicMock(return_value=1000)
+        self.app.winfo_y = MagicMock(return_value=500)
+
+        mock_event_click = MagicMock()
         res_start = self.app._start_drag(mock_event_click)
         self.assertEqual(res_start, "break")
-        self.assertEqual(self.app._drag_mouse_x, 1000)
-        self.assertEqual(self.app._drag_mouse_y, 500)
+        self.assertEqual(self.app._drag_offset_x, 50)
+        self.assertEqual(self.app._drag_offset_y, 20)
 
-        # Simula movimento de 40px no X e 20px no Y
-        mock_event_move = MagicMock(x_root=1040, y_root=520)
-        res_drag = self.app._drag(mock_event_move)
+        # Simula movimento do ponteiro para (1090, 540) -> nova pos esperada (1040, 520)
+        self.app.winfo_pointerxy = MagicMock(return_value=(1090, 540))
+        self.app.geometry = MagicMock()
+        res_drag = self.app._drag(MagicMock())
         self.assertEqual(res_drag, "break")
+        self.app.geometry.assert_called_with("+1040+520")
+
+        # Teste stop_drag
+        res_stop = self.app._stop_drag()
+        self.assertEqual(res_stop, "break")
+        self.assertIsNone(self.app._drag_offset_x)
+        self.assertIsNone(self.app._drag_offset_y)
 
     def test_multi_monitor_bounds_detection(self):
         mx, my, mw, mh = self.app._get_active_monitor()
