@@ -657,3 +657,5 @@ class SettingsWindow(ctk.CTkToplevel):
             self.on_quick_questions_change(lines)
 
         logger.info(f"{len(lines)} perguntas rápidas salvas com sucesso.")
+        self.save_quick_btn.configure(text="✔ Salvo com Sucesso!")
+        self.after(2000, lambda: self.save_quick_btn.configure(text="💾 Salvar Perguntas"))

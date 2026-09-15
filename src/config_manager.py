@@ -106,11 +106,11 @@ class ConfigManager:
 
     def set(self, section: str, key: Optional[str], value: Any) -> None:
         """Define um valor ou seção e persiste em disco."""
-        if section not in self._config:
-            self._config[section] = {}
-        if key is None and isinstance(value, dict):
+        if key is None:
             self._config[section] = value
         else:
+            if section not in self._config or not isinstance(self._config[section], dict):
+                self._config[section] = {}
             self._config[section][key] = value
         self.save_config()
 

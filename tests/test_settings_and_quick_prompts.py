@@ -252,5 +252,57 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         self.assertLessEqual(len(fitted), 18000)
 
 
+    def test_quick_questions_save_and_reload_persistence(self):
+        ui = CopilotUI(config_manager=self.config_manager)
+        ui.update()
+
+        try:
+            ui.open_settings()
+            ui.update()
+            sw = ui.settings_window
+            self.assertIsNotNone(sw)
+
+            custom_lines = [
+                "Meu Perfil | Fale sobre você e sua trajetória",
+                "NodeJS | Explique como funciona o Event Loop no Node.js",
+            ]
+            sw.quick_textbox.delete("1.0", "end")
+            sw.quick_textbox.insert("1.0", "\n".join(custom_lines))
+
+            # Dispara salvamento
+            sw._save_quick_questions()
+            ui.update()
+
+            # 1. Verifica persistência no ConfigManager em memória
+            self.assertEqual(self.config_manager.quick_questions, custom_lines)
+
+            # 2. Verifica persistência no arquivo em disco
+            reloaded = ConfigManager(config_path=self.temp_file.name)
+            self.assertEqual(reloaded.quick_questions, custom_lines)
+
+            # 3. Verifica se os botões do HUD foram atualizados dinamicamente
+            hud_buttons = [
+                w for w in ui.quick_prompts_frame.winfo_children()
+                if isinstance(w, type(sw.save_quick_btn))
+            ]
+            button_texts = [b.cget("text") for b in hud_buttons]
+            self.assertIn("Meu Perfil", button_texts)
+            self.assertIn("NodeJS", button_texts)
+
+            # 4. Fecha e reabre SettingsWindow para garantir que o texto carregado é o salvo
+            sw.destroy()
+            ui.update()
+
+            ui.open_settings()
+            ui.update()
+            sw2 = ui.settings_window
+            loaded_text = sw2.quick_textbox.get("1.0", "end").strip()
+            self.assertEqual(loaded_text, "\n".join(custom_lines))
+            sw2.destroy()
+            ui.update()
+        finally:
+            ui.destroy()
+
+
 if __name__ == "__main__":
     unittest.main()
