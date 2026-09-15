@@ -32,11 +32,14 @@ class AudioCapture:
         audio_callback: Callable[[bytes], None],
         sample_rate: int = 16000,
         chunk_duration: float = 0.1,
+        device_index: Optional[int | str] = None,
     ) -> None:
         self.audio_callback = audio_callback
         self.sample_rate = sample_rate
         self.chunk_size = int(sample_rate * chunk_duration)
+        self.device_index = device_index
         self.is_running = False
+        self._current_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Recursos Windows
         self._pa: Optional[any] = None
@@ -44,6 +47,51 @@ class AudioCapture:
 
         # Recursos Linux
         self._linux_stream = None
+
+    @staticmethod
+    def list_available_devices() -> list[dict]:
+        """Enumera dispositivos de áudio disponíveis para captura na plataforma atual."""
+        devices = []
+        if IS_WINDOWS:
+            try:
+                pa = pyaudio.PyAudio()
+                try:
+                    for d in pa.get_loopback_device_info_generator():
+                        devices.append({
+                            "index": d["index"],
+                            "name": d["name"],
+                            "type": "loopback"
+                        })
+                except Exception as e:
+                    logger.warning(f"Erro ao listar loopbacks WASAPI: {e}")
+
+                # Se não encontrou loopbacks, adiciona dispositivos de entrada regulares
+                if not devices:
+                    for idx in range(pa.get_device_count()):
+                        info = pa.get_device_info_by_index(idx)
+                        if info.get("maxInputChannels", 0) > 0:
+                            devices.append({
+                                "index": info["index"],
+                                "name": info["name"],
+                                "type": "input"
+                            })
+                pa.terminate()
+            except Exception as e:
+                logger.error(f"Erro ao enumerar dispositivos no Windows: {e}")
+        else:
+            if sd is not None:
+                try:
+                    sd_devs = sd.query_devices()
+                    for idx, dev in enumerate(sd_devs):
+                        if dev.get("max_input_channels", 0) > 0:
+                            devices.append({
+                                "index": idx,
+                                "name": dev["name"],
+                                "type": "input"
+                            })
+                except Exception as e:
+                    logger.error(f"Erro ao enumerar dispositivos via sounddevice: {e}")
+        return devices
 
     # ==========================================
     # LÓGICA WINDOWS (PyAudioWPatch / WASAPI)
@@ -70,8 +118,16 @@ class AudioCapture:
         """Inicia a captura de áudio no Windows usando WASAPI loopback."""
         self._pa = pyaudio.PyAudio()
         try:
-            device_info = self._get_windows_loopback_device(self._pa)
-            logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
+            if self.device_index is not None:
+                try:
+                    device_info = self._pa.get_device_info_by_index(int(self.device_index))
+                    logger.info(f"[Windows] Usando dispositivo especificado [{self.device_index}]: {device_info['name']}")
+                except Exception as e:
+                    logger.warning(f"[Windows] Dispositivo {self.device_index} inválido ({e}). Usando padrão.")
+                    device_info = self._get_windows_loopback_device(self._pa)
+            else:
+                device_info = self._get_windows_loopback_device(self._pa)
+                logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
 
             channels = 1
             rate = self.sample_rate
@@ -161,6 +217,14 @@ class AudioCapture:
         Garante a configuração adequada do PULSE_SOURCE e seleciona o dispositivo
         de entrada correto do sounddevice (pulse / pipewire / default).
         """
+        if self.device_index is not None:
+            try:
+                idx = int(self.device_index)
+                logger.info(f"[Linux] Usando dispositivo de entrada selecionado: [{idx}]")
+                return idx
+            except Exception as e:
+                logger.warning(f"[Linux] Falha ao usar índice {self.device_index}: {e}")
+
         # 1. Configura PULSE_SOURCE (respeitando se já existir ou detectando RUNNING)
         self._configure_linux_pulse_source()
 
@@ -222,11 +286,22 @@ class AudioCapture:
     # ==========================================
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio dependendo da plataforma."""
+        self._current_loop = loop
         self.is_running = True
         if IS_WINDOWS:
             self._start_windows(loop)
         else:
             self._start_linux(loop)
+
+    def set_device(self, device_index: Optional[int | str], loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        """Altera o dispositivo de captura ativo e reinicia o stream se estiver rodando."""
+        self.device_index = device_index
+        target_loop = loop or self._current_loop
+        if self.is_running:
+            logger.info(f"Reiniciando captura de áudio para o dispositivo [{device_index}]...")
+            self.stop()
+            if target_loop:
+                self.start(target_loop)
 
     def stop(self) -> None:
         """Para e encerra os recursos de áudio."""

@@ -1,6 +1,12 @@
 import customtkinter as ctk
 import logging
-from typing import Optional
+from typing import Callable, Optional
+try:
+    from config_manager import ConfigManager
+    from settings_window import SettingsWindow
+except ImportError:
+    from src.config_manager import ConfigManager
+    from src.settings_window import SettingsWindow
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +25,19 @@ class CopilotUI(ctk.CTk):
     def __init__(
         self,
         title: str = "Interview Copilot",
-        on_toggle_recording: Optional[callable] = None,
-        on_respond_now: Optional[callable] = None,
-        on_clear: Optional[callable] = None,
+        on_toggle_recording: Optional[Callable[[], None]] = None,
+        on_respond_now: Optional[Callable[[], None]] = None,
+        on_clear: Optional[Callable[[], None]] = None,
+        config_manager: Optional[ConfigManager] = None,
+        on_quick_question: Optional[Callable[[str], None]] = None,
+        on_device_change: Optional[Callable[[Optional[int], str], None]] = None,
+        on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
     ) -> None:
         super().__init__()
 
         self.title(title)
         self.geometry("520x390+100+100")
-        
+
         # Configurações de overlay
         self.overrideredirect(True)
         self.attributes("-topmost", True)
@@ -36,6 +46,12 @@ class CopilotUI(ctk.CTk):
         self.on_toggle_recording = on_toggle_recording
         self.on_respond_now = on_respond_now
         self.on_clear = on_clear
+        self.config_manager = config_manager or ConfigManager()
+        self.on_quick_question = on_quick_question
+        self.on_device_change = on_device_change
+        self.on_llm_change = on_llm_change
+
+        self.settings_window: Optional[SettingsWindow] = None
 
         self._offset_x = 0
         self._offset_y = 0
@@ -156,6 +172,18 @@ class CopilotUI(ctk.CTk):
         )
         self.close_btn.pack(side="right", padx=(2, 6))
 
+        # Botão para abrir Configurações
+        self.settings_btn = ctk.CTkButton(
+            self.header_frame,
+            text="⚙",
+            width=28,
+            height=24,
+            fg_color="transparent",
+            hover_color="#313244",
+            command=self.open_settings
+        )
+        self.settings_btn.pack(side="right", padx=2)
+
         # Botão para Presets de Ancoragem Rápida
         self.preset_pos_btn = ctk.CTkButton(
             self.header_frame,
@@ -226,6 +254,11 @@ class CopilotUI(ctk.CTk):
         )
         self.clear_btn.pack(side="right")
 
+        # Barra de Perguntas Rápidas de Entrevista (Quick Prompts)
+        self.quick_prompts_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.quick_prompts_frame.pack(fill="x", padx=12, pady=(2, 4))
+        self._build_quick_prompt_buttons()
+
         # Área de Transcrição
         self.transcription_label = ctk.CTkLabel(
             self.main_frame,
@@ -233,18 +266,18 @@ class CopilotUI(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#A6ADC8"
         )
-        self.transcription_label.pack(anchor="w", padx=12, pady=(6, 2))
+        self.transcription_label.pack(anchor="w", padx=12, pady=(4, 2))
 
         self.transcription_textbox = ctk.CTkTextbox(
             self.main_frame,
-            height=75,
+            height=70,
             corner_radius=8,
             fg_color="#11111B",
             text_color="#CDD6F4",
             font=ctk.CTkFont(size=11),
             wrap="word"
         )
-        self.transcription_textbox.pack(fill="x", padx=12, pady=(0, 6))
+        self.transcription_textbox.pack(fill="x", padx=12, pady=(0, 4))
 
         # Área de Resposta da IA
         self.ai_label = ctk.CTkLabel(
@@ -253,7 +286,7 @@ class CopilotUI(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#A6E3A1"
         )
-        self.ai_label.pack(anchor="w", padx=12, pady=(4, 2))
+        self.ai_label.pack(anchor="w", padx=12, pady=(2, 2))
 
         self.ai_textbox = ctk.CTkTextbox(
             self.main_frame,
@@ -265,14 +298,139 @@ class CopilotUI(ctk.CTk):
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
 
-        # Atalhos de Teclado Globais (Foco na janela)
-        self.bind_all("<Control-space>", self._handle_toggle_recording)
-        self.bind_all("<F9>", self._handle_toggle_recording)
-        self.bind_all("<Control-Return>", self._handle_respond_now)
-        self.bind_all("<Escape>", self._handle_clear)
-        self.bind_all("<Control-BackSpace>", self._handle_clear)
-        self.bind_all("<F8>", self.cycle_window_position)
-        self.bind_all("<F10>", self.cycle_opacity)
+        # Registra atalhos de teclado
+        self._bind_hotkeys()
+
+    def _build_quick_prompt_buttons(self) -> None:
+        """Renderiza botões de atalho rápido para perguntas frequentes de entrevistas técnicas."""
+        # Limpa widgets anteriores
+        for widget in self.quick_prompts_frame.winfo_children():
+            widget.destroy()
+
+        lbl = ctk.CTkLabel(
+            self.quick_prompts_frame,
+            text="⚡ Rápidas:",
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color="#89B4FA"
+        )
+        lbl.pack(side="left", padx=(0, 6))
+
+        questions = self.config_manager.quick_questions
+        # Mapeamento para rótulos amigáveis e curtos
+        def get_short_label(q: str) -> str:
+            lower = q.lower()
+            if "sobre você" in lower or "trajetória" in lower:
+                return "Sobre Mim"
+            if "arquitetura" in lower or "projeto" in lower:
+                return "Arquitetura"
+            if "bug" in lower or "investigação" in lower:
+                return "Bugs"
+            if "banco" in lower or "sql" in lower:
+                return "Bancos"
+            if "desafio" in lower:
+                return "Desafio"
+            return q[:12] + ".."
+
+        for q in questions[:5]:
+            label_text = get_short_label(q)
+            btn = ctk.CTkButton(
+                self.quick_prompts_frame,
+                text=label_text,
+                font=ctk.CTkFont(size=10),
+                fg_color="#181825",
+                text_color="#CDD6F4",
+                hover_color="#313244",
+                height=22,
+                width=68,
+                command=lambda question=q: self._handle_quick_prompt(question)
+            )
+            btn.pack(side="left", padx=2)
+
+    def _handle_quick_prompt(self, question: str) -> Optional[str]:
+        """Dispara pergunta rápida pré-selecionada."""
+        if self.on_quick_question:
+            self.on_quick_question(question)
+        else:
+            self.update_transcription(question, is_final=True)
+            if self.on_respond_now:
+                self.on_respond_now()
+        return "break"
+
+    def open_settings(self, event=None) -> Optional[str]:
+        """Abre a janela modal de configurações."""
+        if self.settings_window is not None:
+            try:
+                if self.settings_window.winfo_exists():
+                    self.settings_window.lift()
+                    self.settings_window.focus_force()
+                    return "break"
+            except Exception:
+                pass
+
+        self.settings_window = SettingsWindow(
+            self,
+            config_manager=self.config_manager,
+            on_device_change=self.on_device_change,
+            on_llm_change=self.on_llm_change,
+            on_hotkeys_change=self.apply_hotkeys,
+            on_quick_questions_change=self._on_quick_questions_updated,
+        )
+        return "break"
+
+    def _on_quick_questions_updated(self, questions: list) -> None:
+        """Atualiza a barra de botões quando as perguntas forem salvas nas configurações."""
+        self._build_quick_prompt_buttons()
+
+    def _bind_hotkeys(self) -> None:
+        """Registra os atalhos de teclado globais da janela."""
+        hotkeys = self.config_manager.hotkeys
+
+        # Gravar / Parar
+        k_rec = hotkeys.get("toggle_recording", "<Control-space>")
+        k_rec_alt = hotkeys.get("toggle_recording_alt", "<F9>")
+        self.bind_all(k_rec, self._handle_toggle_recording)
+        self.bind_all(k_rec_alt, self._handle_toggle_recording)
+
+        # Responder Agora
+        k_resp = hotkeys.get("respond_now", "<Control-Return>")
+        self.bind_all(k_resp, self._handle_respond_now)
+
+        # Limpar Sessão
+        k_clear = hotkeys.get("clear_session", "<Escape>")
+        k_clear_alt = hotkeys.get("clear_session_alt", "<Control-BackSpace>")
+        self.bind_all(k_clear, self._handle_clear)
+        self.bind_all(k_clear_alt, self._handle_clear)
+
+        # Presets e Opacidade
+        k_pos = hotkeys.get("cycle_position", "<F8>")
+        k_op = hotkeys.get("cycle_opacity", "<F10>")
+        self.bind_all(k_pos, self.cycle_window_position)
+        self.bind_all(k_op, self.cycle_opacity)
+
+        # Abrir Configurações
+        k_sett = hotkeys.get("open_settings", "<F12>")
+        self.bind_all(k_sett, self.open_settings)
+
+    def apply_hotkeys(self, hotkeys_dict: dict) -> None:
+        """Aplica novo mapeamento de teclas."""
+        self._bind_hotkeys()
+        def _fmt(key_str: str) -> str:
+            s = key_str.replace("<", "").replace(">", "")
+            s = s.replace("Control", "Ctrl").replace("Return", "Enter").replace("Escape", "Esc").replace("space", "Espaço")
+            s = s.replace("-", "+")
+            return s
+
+        k_rec = _fmt(hotkeys_dict.get("toggle_recording", "Ctrl+Espaço"))
+        k_resp = _fmt(hotkeys_dict.get("respond_now", "Ctrl+Enter"))
+        k_clear = _fmt(hotkeys_dict.get("clear_session", "Esc"))
+
+        if not self._is_recording:
+            self.record_btn.configure(text=f"🎙 Gravar [{k_rec}]")
+        else:
+            self.record_btn.configure(text=f"⏹ Parar [{k_rec}]")
+
+        self.respond_btn.configure(text=f"⚡ Responder [{k_resp}]")
+        self.clear_btn.configure(text=f"🗑 Limpar [{k_clear}]")
 
     def _bind_drag_events(self, widget) -> None:
         """Vincula eventos de arrastar diretamente ao widget."""
@@ -541,7 +699,7 @@ class CopilotUI(ctk.CTk):
         self.clear_ai_response()
 
     def update_audio_level(self, rms: float) -> None:
-        """Atualiza a representação visual do mini VU-meter de áudio no HUD."""
+        """Atualiza a representação visual do mini VU-meter de áudio no HUD e nas configurações se aberto."""
         if rms < 150:
             text = "🎙 ···"
             color = "#585B70"
@@ -557,13 +715,27 @@ class CopilotUI(ctk.CTk):
 
         self.audio_meter_label.configure(text=text, fg=color)
 
+        # Se a janela de configurações estiver aberta, atualiza seu medidor em tempo real
+        if self.settings_window is not None:
+            try:
+                if self.settings_window.winfo_exists():
+                    self.settings_window.update_audio_level(rms)
+            except Exception:
+                pass
+
     def destroy(self) -> None:
-        """Limpa timers pendentes e encerra a janela."""
+        """Limpa timers pendentes e encerra a janela e subjanelas."""
         if hasattr(self, "_init_after_id") and self._init_after_id:
             try:
                 self.after_cancel(self._init_after_id)
             except Exception:
                 pass
+
+        if self.settings_window is not None:
+            try:
+                if self.settings_window.winfo_exists():
+                    self.settings_window.destroy()
+            except Exception:
+                pass
+
         super().destroy()
-
-
