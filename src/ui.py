@@ -90,9 +90,12 @@ class CopilotUI(ctk.CTk):
         self._position_presets = ["top-center", "top-right", "top-left", "center"]
         self._current_position_idx = 0
 
-        # Offsets para arrasto 1:1 perfeitamente sincronizado com o ponteiro
+        # Offsets e estado para arrasto 1:1 com throttling (livre de lag e runaway em 144Hz/XWayland)
         self._drag_offset_x: Optional[int] = None
         self._drag_offset_y: Optional[int] = None
+        self._drag_target_x: int = 0
+        self._drag_target_y: int = 0
+        self._drag_scheduled: bool = False
 
         self._setup_ui()
         self._init_after_id = self.after(100, lambda: self._apply_opacity(self._opacity_profiles[self._current_opacity_idx]["alpha"]))
@@ -180,9 +183,7 @@ class CopilotUI(ctk.CTk):
 
         # Eventos do mouse para arrastar a janela de forma 1:1, suave e sem saltos
         for widget in (self.header_frame, self.title_label, self.status_badge, self.audio_meter_label):
-            widget.bind("<Button-1>", self._start_drag)
-            widget.bind("<B1-Motion>", self._drag)
-            widget.bind("<ButtonRelease-1>", self._stop_drag)
+            self._bind_drag_events(widget)
 
         # Barra de Controles (Gravar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -280,26 +281,39 @@ class CopilotUI(ctk.CTk):
         widget.bind("<ButtonRelease-1>", self._stop_drag)
 
     def _start_drag(self, event) -> Optional[str]:
-        """Salva o offset exato do ponteiro em relação à janela para arrasto 1:1 perfeito."""
-        pointer_x, pointer_y = self.winfo_pointerxy()
-        self._drag_offset_x = pointer_x - self.winfo_x()
-        self._drag_offset_y = pointer_y - self.winfo_y()
+        """Salva o offset absoluto inicial entre o cursor na tela e o canto da janela."""
+        self._drag_offset_x = event.x_root - self.winfo_x()
+        self._drag_offset_y = event.y_root - self.winfo_y()
+        self._drag_scheduled = False
         return "break"
 
     def _drag(self, event) -> Optional[str]:
-        """Move a janela acompanhando 1:1 o cursor do mouse sem aceleração nem saltos."""
+        """Calcula a nova posição alvo e agenda atualização desacoplada via after_idle."""
         if getattr(self, "_drag_offset_x", None) is None or getattr(self, "_drag_offset_y", None) is None:
             return "break"
-        pointer_x, pointer_y = self.winfo_pointerxy()
-        new_x = pointer_x - self._drag_offset_x
-        new_y = pointer_y - self._drag_offset_y
-        self.geometry(f"+{new_x}+{new_y}")
+
+        self._drag_target_x = event.x_root - self._drag_offset_x
+        self._drag_target_y = event.y_root - self._drag_offset_y
+
+        if not getattr(self, "_drag_scheduled", False):
+            self._drag_scheduled = True
+            self.after_idle(self._apply_drag)
         return "break"
+
+    def _apply_drag(self) -> None:
+        """Aplica a geometria no frame idle do Tk, eliminando acúmulo de fila e overshoot no XWayland."""
+        self._drag_scheduled = False
+        if getattr(self, "_drag_offset_x", None) is None or getattr(self, "_drag_offset_y", None) is None:
+            return
+        if not self.winfo_exists():
+            return
+        self.geometry(f"+{self._drag_target_x}+{self._drag_target_y}")
 
     def _stop_drag(self, event=None) -> Optional[str]:
         """Finaliza o arrasto e reseta os offsets."""
         self._drag_offset_x = None
         self._drag_offset_y = None
+        self._drag_scheduled = False
         return "break"
 
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
