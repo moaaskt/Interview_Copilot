@@ -2,8 +2,8 @@
 
 ## Status Atual
 - **Projeto**: Interview Copilot (`helpIA`)
-- **Fase Ativa**: Ciclo 1 Finalizado (Todas as fases concluídas com sucesso)
-- **Próximo Passo**: Uso em produção / Entrevistas reais ou novo ciclo de melhorias (`/gsd-progress`)
+- **Fase Ativa**: Milestone v1.0 Finalizado (Relatório gerado em `.planning/reports/MILESTONE_SUMMARY-v1.0.md`)
+- **Próximo Passo**: Arquivar milestone (`/gsd-complete-milestone`) ou iniciar novo ciclo (`/gsd-new-milestone`)
 
 ## Marcos Concluídos
 - [x] Mapeamento completo do codebase (`.planning/codebase/`)
