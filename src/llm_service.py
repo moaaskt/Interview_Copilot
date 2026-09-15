@@ -112,12 +112,37 @@ class LLMService:
     def system_prompt(self, value: str) -> None:
         self.set_system_prompt(value)
 
+    def _fit_prompt_to_budget(self, prompt: str, max_chars: int = 18000) -> str:
+        """
+        Garante que o system prompt não ultrapasse o limite de tokens da Groq (evitando erro HTTP 413 / ITPM rate limit).
+        Preserva as diretrizes principais e a diretiva de estilo cortando parágrafos de forma limpa.
+        """
+        if len(prompt) <= max_chars:
+            return prompt
+
+        logger.warning(
+            f"[LLMService] System prompt ({len(prompt)} chars) excede o limite seguro de TPM da Groq ({max_chars} chars). "
+            "Ajustando automaticamente para garantir geração sem erro HTTP 413."
+        )
+        style_directive = RESPONSE_STYLES.get(self.response_style, RESPONSE_STYLES["direta"])
+        budget_for_persona = max_chars - len(style_directive) - 50
+
+        cut_point = self.persona[:budget_for_persona].rfind("\n\n")
+        if cut_point == -1 or cut_point < budget_for_persona // 2:
+            cut_point = budget_for_persona
+        trimmed_persona = self.persona[:cut_point].strip()
+
+        return f"{trimmed_persona}\n\n{style_directive}"
+
     async def stream_response(self, user_question: str) -> AsyncGenerator[str, None]:
         """
         Envia a transcrição da pergunta para a API da Groq com stream=True
         e gera tokens em tempo real.
         """
         effective_prompt = self.get_effective_system_prompt()
+        if "qwen" in self.model.lower():
+            effective_prompt = self._fit_prompt_to_budget(effective_prompt, max_chars=18000)
+
         max_tokens = 450 if self.response_style == "tecnica" else (350 if self.response_style == "star" else 250)
 
         try:
@@ -139,5 +164,28 @@ class LLMService:
                     yield token
 
         except Exception as e:
+            err_msg = str(e)
+            if ("413" in err_msg or "rate_limit" in err_msg or "Request too large" in err_msg) and len(effective_prompt) > 12000:
+                logger.warning(f"[LLMService] Erro 413/TPM da Groq detectado. Tentando fallback com prompt reduzido a 10.000 caracteres...")
+                try:
+                    fallback_prompt = self._fit_prompt_to_budget(self.get_effective_system_prompt(), max_chars=10000)
+                    stream = await self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": fallback_prompt},
+                            {"role": "user", "content": user_question},
+                        ],
+                        temperature=0.3,
+                        max_tokens=max_tokens,
+                        stream=True,
+                    )
+                    async for chunk in stream:
+                        token = chunk.choices[0].delta.content or ""
+                        if token:
+                            yield token
+                    return
+                except Exception as retry_err:
+                    logger.error(f"[LLMService] Falha na recuperação de erro 413: {retry_err}")
+
             logger.error(f"Erro ao comunicar com a Groq: {e}")
             yield f"\n[Erro Groq: {str(e)}]"

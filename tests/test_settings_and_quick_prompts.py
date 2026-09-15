@@ -230,6 +230,27 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         mgr._dispatch_callback("toggle_recording")
         self.assertEqual(called, ["toggled"])
 
+    def test_quick_prompt_entry_parsing(self):
+        ui = CopilotUI(config_manager=self.config_manager)
+        try:
+            # Formato customizado Nome | Pergunta
+            lbl, prompt = ui._parse_quick_prompt_entry("Experiência Go | Conte sobre seus projetos e experiência em Go")
+            self.assertEqual(lbl, "Experiência Go")
+            self.assertEqual(prompt, "Conte sobre seus projetos e experiência em Go")
+
+            # Fallback sem pipe
+            lbl_legacy, prompt_legacy = ui._parse_quick_prompt_entry("Fale mais sobre você e sua trajetória")
+            self.assertEqual(lbl_legacy, "Sobre Mim")
+            self.assertEqual(prompt_legacy, "Fale mais sobre você e sua trajetória")
+        finally:
+            ui.destroy()
+
+    def test_llm_service_prompt_budget_fitting(self):
+        from src.llm_service import LLMService
+        service = LLMService(api_key="mock", custom_persona="A" * 30000)
+        fitted = service._fit_prompt_to_budget(service.get_effective_system_prompt(), max_chars=18000)
+        self.assertLessEqual(len(fitted), 18000)
+
 
 if __name__ == "__main__":
     unittest.main()

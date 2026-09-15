@@ -27,11 +27,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "open_settings": "<F12>",
     },
     "quick_questions": [
-        "Fale mais sobre você e sua trajetória profissional",
-        "Explique a arquitetura de um projeto recente que você desenvolveu",
-        "Como você aborda a investigação e resolução de um bug crítico em produção?",
-        "Qual é a sua experiência prática com bancos relacionais (MySQL/PostgreSQL) vs NoSQL?",
-        "Qual foi um desafio técnico complexo que você enfrentou e como superou?",
+        "Sobre Mim | Fale mais sobre você e sua trajetória profissional",
+        "Arquitetura | Explique a arquitetura de um projeto recente que você desenvolveu",
+        "Bugs | Como você aborda a investigação e resolução de um bug crítico em produção?",
+        "Bancos | Qual é a sua experiência prática com bancos relacionais (MySQL/PostgreSQL) vs NoSQL?",
+        "Desafio | Qual foi um desafio técnico complexo que você enfrentou e como superou?",
     ],
 }
 

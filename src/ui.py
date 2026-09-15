@@ -306,6 +306,36 @@ class CopilotUI(ctk.CTk):
         self._bind_hotkeys()
         self.update_button_labels()
 
+    def _parse_quick_prompt_entry(self, entry: str) -> tuple[str, str]:
+        """
+        Extrai (rótulo_do_botão, pergunta_completa) de uma entrada rápida.
+        Suporta o formato 'Nome do Botão | Pergunta' ou texto simples de pergunta.
+        """
+        if not entry or not entry.strip():
+            return ("", "")
+
+        if "|" in entry:
+            parts = entry.split("|", 1)
+            label = parts[0].strip()
+            prompt = parts[1].strip()
+            return (label or prompt[:12], prompt or label)
+
+        # Fallback para entradas sem delimitador '|'
+        lower = entry.lower()
+        if "sobre você" in lower or "trajetória" in lower:
+            label = "Sobre Mim"
+        elif "arquitetura" in lower or "projeto" in lower:
+            label = "Arquitetura"
+        elif "bug" in lower or "investigação" in lower:
+            label = "Bugs"
+        elif "banco" in lower or "sql" in lower:
+            label = "Bancos"
+        elif "desafio" in lower:
+            label = "Desafio"
+        else:
+            label = entry[:12] + ".." if len(entry) > 12 else entry
+        return (label, entry.strip())
+
     def _build_quick_prompt_buttons(self) -> None:
         """Renderiza botões de atalho rápido para perguntas frequentes de entrevistas técnicas."""
         # Limpa widgets anteriores
@@ -321,23 +351,11 @@ class CopilotUI(ctk.CTk):
         lbl.pack(side="left", padx=(0, 6))
 
         questions = self.config_manager.quick_questions
-        # Mapeamento para rótulos amigáveis e curtos
-        def get_short_label(q: str) -> str:
-            lower = q.lower()
-            if "sobre você" in lower or "trajetória" in lower:
-                return "Sobre Mim"
-            if "arquitetura" in lower or "projeto" in lower:
-                return "Arquitetura"
-            if "bug" in lower or "investigação" in lower:
-                return "Bugs"
-            if "banco" in lower or "sql" in lower:
-                return "Bancos"
-            if "desafio" in lower:
-                return "Desafio"
-            return q[:12] + ".."
-
         for q in questions[:5]:
-            label_text = get_short_label(q)
+            label_text, prompt_text = self._parse_quick_prompt_entry(q)
+            if not label_text or not prompt_text:
+                continue
+
             btn = ctk.CTkButton(
                 self.quick_prompts_frame,
                 text=label_text,
@@ -346,8 +364,8 @@ class CopilotUI(ctk.CTk):
                 text_color="#CDD6F4",
                 hover_color="#313244",
                 height=22,
-                width=68,
-                command=lambda question=q: self._handle_quick_prompt(question)
+                width=max(68, len(label_text) * 7 + 16),
+                command=lambda question=prompt_text: self._handle_quick_prompt(question)
             )
             btn.pack(side="left", padx=2)
 
