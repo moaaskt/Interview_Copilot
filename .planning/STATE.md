@@ -2,8 +2,8 @@
 
 ## Status Atual
 - **Projeto**: Interview Copilot (`helpIA`)
-- **Fase Ativa**: Fase 4: Tela de Configurações & Quick Prompts de Entrevista (Aguardando planejamento)
-- **Próximo Passo**: `/gsd-plan-phase 4`
+- **Fase Ativa**: Fase 4: Tela de Configurações & Quick Prompts de Entrevista (Planejada e pronta para execução)
+- **Próximo Passo**: `/gsd-execute-phase 4`
 
 ## Marcos Concluídos
 - [x] Mapeamento completo do codebase (`.planning/codebase/`)

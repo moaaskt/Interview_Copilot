@@ -30,8 +30,8 @@
 **Goal:** Implementar janela de configurações do helpIA contendo seleção de dispositivo de áudio/placa de som, medidor de nível em tempo real reaproveitando o VU-meter do header, editor de system prompt (contexto do candidato), atalhos de teclado customizáveis, estilo de resposta da IA (direta vs. técnica) e botões de perguntas rápidas de entrevista técnica com disparo imediato.
 **Requirements**: TBD
 **Depends on:** Phase 3
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 4 to break down)
+- [ ] 04-PLAN.md: Implementar ConfigManager, seleção de áudio com VU, editor de persona/prompt, hotkeys customizáveis, estilos de resposta e botões de quick prompts
