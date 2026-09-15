@@ -27,7 +27,7 @@ Implementar controle por teclas de atalho no overlay HUD (`CopilotUI`) para acio
 - Verificar se o acionamento via teclado ativa a transcrição Deepgram e dispara o streaming Groq perfeitamente.
 
 ## 🔍 Critérios de Aceitação / Verificação
-- [ ] Pressionar `Ctrl+Space` altera o estado do botão de gravação para ativo (`⏹ Parar [Ctrl+Espaço]`) e inicia captura.
-- [ ] Pressionar `Ctrl+Return` finaliza a gravação e dispara a chamada LLM Groq.
-- [ ] Pressionar `Esc` limpa o conteúdo de transcrição e IA da tela.
-- [ ] Os botões exibem claramente os atalhos entre colchetes.
+- [x] Pressionar `Ctrl+Space` altera o estado do botão de gravação para ativo (`⏹ Parar [Ctrl+Espaço]`) e inicia captura.
+- [x] Pressionar `Ctrl+Return` finaliza a gravação e dispara a chamada LLM Groq.
+- [x] Pressionar `Esc` limpa o conteúdo de transcrição e IA da tela.
+- [x] Os botões exibem claramente os atalhos entre colchetes.

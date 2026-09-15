@@ -100,7 +100,7 @@ class CopilotUI(ctk.CTk):
 
         self.record_btn = ctk.CTkButton(
             self.controls_frame,
-            text="🎙 Gravar Pergunta",
+            text="🎙 Gravar [Ctrl+Espaço]",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#A6E3A1",
             text_color="#11111B",
@@ -112,7 +112,7 @@ class CopilotUI(ctk.CTk):
 
         self.respond_btn = ctk.CTkButton(
             self.controls_frame,
-            text="⚡ Responder Agora",
+            text="⚡ Responder [Ctrl+Enter]",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#89B4FA",
             text_color="#11111B",
@@ -124,12 +124,12 @@ class CopilotUI(ctk.CTk):
 
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
-            text="🗑 Limpar",
+            text="🗑 Limpar [Esc]",
             font=ctk.CTkFont(size=11),
             fg_color="#313244",
             text_color="#CDD6F4",
             hover_color="#45475A",
-            width=70,
+            width=85,
             height=32,
             command=self._handle_clear
         )
@@ -174,6 +174,13 @@ class CopilotUI(ctk.CTk):
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
 
+        # Atalhos de Teclado Globais (Foco na janela)
+        self.bind_all("<Control-space>", self._handle_toggle_recording)
+        self.bind_all("<F9>", self._handle_toggle_recording)
+        self.bind_all("<Control-Return>", self._handle_respond_now)
+        self.bind_all("<Escape>", self._handle_clear)
+        self.bind_all("<Control-BackSpace>", self._handle_clear)
+
     def _bind_drag_events(self, widget) -> None:
         """Vincula eventos de arrastar diretamente ao widget."""
         widget.bind("<Button-1>", self._start_drag)
@@ -190,19 +197,22 @@ class CopilotUI(ctk.CTk):
         y = event.y_root - self._offset_y
         self.geometry(f"+{x}+{y}")
 
-    def _handle_toggle_recording(self) -> None:
+    def _handle_toggle_recording(self, event=None) -> Optional[str]:
         if self.on_toggle_recording:
             self.on_toggle_recording()
+        return "break"
 
-    def _handle_respond_now(self) -> None:
+    def _handle_respond_now(self, event=None) -> Optional[str]:
         if self.on_respond_now:
             self.on_respond_now()
+        return "break"
 
-    def _handle_clear(self) -> None:
+    def _handle_clear(self, event=None) -> Optional[str]:
         if self.on_clear:
             self.on_clear()
         else:
             self.clear_all()
+        return "break"
 
     def get_transcription_text(self) -> str:
         """Retorna o texto atualmente exibido na caixa de transcrição, limpando prefixos."""
@@ -218,7 +228,7 @@ class CopilotUI(ctk.CTk):
         self._is_recording = is_recording
         if is_recording:
             self.record_btn.configure(
-                text="⏹ Parar e Responder",
+                text="⏹ Parar [Ctrl+Espaço]",
                 fg_color="#F38BA8",
                 text_color="#11111B",
                 hover_color="#EBA0AC"
@@ -229,7 +239,7 @@ class CopilotUI(ctk.CTk):
             )
         else:
             self.record_btn.configure(
-                text="🎙 Gravar Pergunta",
+                text="🎙 Gravar [Ctrl+Espaço]",
                 fg_color="#A6E3A1",
                 text_color="#11111B",
                 hover_color="#94E2D5"

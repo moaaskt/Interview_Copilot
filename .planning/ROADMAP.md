@@ -5,7 +5,7 @@
 - **Entregas**:
   - Atalhos no CustomTkinter / Tk bindings para Gravar/Parar (`<Control-space>` ou `<F9>`), Responder Agora (`<Control-Return>`) e Limpar (`<Control-BackSpace>`).
   - Dicas visuais (tooltips/legendas nos botões com os atalhos correspondentes).
-- **Status**: Não iniciada.
+- **Status**: Concluída.
 
 ## Fase 2: Refinamento de UX do Overlay & Auto-scroll Inteligente
 - **Objetivo**: Tornar a leitura durante a entrevista ultra-confortável, fluida e discreta.
