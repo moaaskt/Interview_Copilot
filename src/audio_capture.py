@@ -5,6 +5,8 @@ import subprocess
 import sys
 from typing import Callable, Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = sys.platform == "win32"
@@ -129,24 +131,47 @@ class AudioCapture:
                 device_info = self._get_windows_loopback_device(self._pa)
                 logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
 
-            channels = 1
-            rate = self.sample_rate
+            # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
+            native_channels = int(device_info.get("maxInputChannels", 2)) or 1
+            native_rate = int(device_info.get("defaultSampleRate", 48000)) or self.sample_rate
+            target_rate = self.sample_rate
+
+            frames_per_buffer = int(native_rate * (self.chunk_size / self.sample_rate))
 
             def pcm_callback(in_data, frame_count, time_info, status):
                 if self.is_running and in_data:
-                    loop.call_soon_threadsafe(self.audio_callback, in_data)
+                    try:
+                        samples = np.frombuffer(in_data, dtype=np.int16)
+                        # Se multi-canal (estéreo/5.1), faz downmix para mono
+                        if native_channels > 1 and len(samples) >= native_channels:
+                            samples = samples.reshape(-1, native_channels).mean(axis=1).astype(np.int16)
+
+                        # Se taxa de amostragem nativa for diferente de 16kHz, reamostra com interpolação linear rápida
+                        if native_rate != target_rate and len(samples) > 0:
+                            num_target = int(len(samples) * target_rate / native_rate)
+                            if num_target > 0:
+                                indices = np.linspace(0, len(samples) - 1, num_target)
+                                samples = np.interp(indices, np.arange(len(samples)), samples).astype(np.int16)
+
+                        out_bytes = samples.tobytes()
+                    except Exception as e:
+                        logger.debug(f"[Windows Audio] Erro na conversão de áudio: {e}")
+                        out_bytes = in_data
+
+                    loop.call_soon_threadsafe(self.audio_callback, out_bytes)
                 return (None, pyaudio.paContinue)
 
             self._win_stream = self._pa.open(
                 format=pyaudio.paInt16,
-                channels=channels,
-                rate=rate,
+                channels=native_channels,
+                rate=native_rate,
                 input=True,
                 input_device_index=device_info["index"],
-                frames_per_buffer=self.chunk_size,
+                frames_per_buffer=frames_per_buffer,
                 stream_callback=pcm_callback,
             )
             self._win_stream.start_stream()
+            logger.info(f"[Windows] Captura WASAPI iniciada com sucesso ({native_rate}Hz, {native_channels} canais -> reamostrado para {target_rate}Hz mono)")
         except Exception as e:
             logger.error(f"[Windows] Erro ao inicializar captura WASAPI: {e}")
             self.stop()
