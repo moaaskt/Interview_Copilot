@@ -56,3 +56,10 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# User Configuration
+helpia_config.json
+
+# Planning & GSD
+.planning/
+.planning_local_backup/
