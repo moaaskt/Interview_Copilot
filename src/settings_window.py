@@ -12,6 +12,102 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+MODIFIER_KEYS = {
+    "Control_L", "Control_R",
+    "Shift_L", "Shift_R",
+    "Alt_L", "Alt_R",
+    "Win_L", "Win_R",
+    "Caps_Lock", "Num_Lock",
+}
+
+
+def format_tk_to_user(tk_str: str) -> str:
+    """Converte sintaxe de bind do Tkinter (ex: <Control-space>) para formato amigável (ex: Ctrl + Espaço)."""
+    if not tk_str:
+        return ""
+    s = tk_str.strip().replace("<", "").replace(">", "")
+    parts = s.split("-")
+    user_parts = []
+    for p in parts:
+        lower = p.lower()
+        if lower in ("control", "ctrl"):
+            user_parts.append("Ctrl")
+        elif lower == "alt":
+            user_parts.append("Alt")
+        elif lower == "shift":
+            user_parts.append("Shift")
+        elif lower == "space":
+            user_parts.append("Espaço")
+        elif lower == "return":
+            user_parts.append("Enter")
+        elif lower in ("escape", "esc"):
+            user_parts.append("Esc")
+        elif lower == "backspace":
+            user_parts.append("Backspace")
+        else:
+            user_parts.append(p.upper() if len(p) == 1 else p)
+    return " + ".join(user_parts)
+
+
+def parse_key_event(event) -> Optional[tuple[str, str]]:
+    """
+    Interpreta um evento de tecla Tkinter e retorna (tk_bind_string, user_friendly_string).
+    Retorna None caso o usuário tenha pressionado apenas uma tecla modificadora isolada.
+    """
+    keysym = event.keysym
+    if keysym in MODIFIER_KEYS:
+        return None
+
+    state = event.state
+    is_ctrl = bool(state & 0x0004)
+    is_shift = bool(state & 0x0001)
+    is_alt = bool(state & 0x20000 or state & 0x0008)
+
+    tk_mods = []
+    user_mods = []
+
+    if is_ctrl:
+        tk_mods.append("Control")
+        user_mods.append("Ctrl")
+    if is_alt:
+        tk_mods.append("Alt")
+        user_mods.append("Alt")
+    if is_shift:
+        tk_mods.append("Shift")
+        user_mods.append("Shift")
+
+    clean_keysym = keysym
+    user_key = keysym
+
+    lower = keysym.lower()
+    if lower == "space":
+        clean_keysym = "space"
+        user_key = "Espaço"
+    elif lower == "return":
+        clean_keysym = "Return"
+        user_key = "Enter"
+    elif lower in ("escape", "esc"):
+        clean_keysym = "Escape"
+        user_key = "Esc"
+    elif lower == "backspace":
+        clean_keysym = "BackSpace"
+        user_key = "Backspace"
+    elif lower == "tab":
+        clean_keysym = "Tab"
+        user_key = "Tab"
+    elif keysym.startswith("F") and keysym[1:].isdigit():
+        clean_keysym = keysym
+        user_key = keysym
+    elif len(keysym) == 1:
+        clean_keysym = keysym.lower()
+        user_key = keysym.upper()
+
+    tk_body = "-".join(tk_mods + [clean_keysym])
+    tk_str = f"<{tk_body}>"
+    user_str = " + ".join(user_mods + [user_key])
+
+    return tk_str, user_str
+
 
 class SettingsWindow(ctk.CTkToplevel):
     """
@@ -355,14 +451,23 @@ class SettingsWindow(ctk.CTkToplevel):
 
         lbl_desc = ctk.CTkLabel(
             tab,
-            text="Mapeamento de Teclas de Atalho (Pressione Salvar para aplicar):",
+            text="Mapeamento de Teclas de Atalho:",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#A6ADC8"
         )
-        lbl_desc.pack(anchor="w", padx=12, pady=(10, 10))
+        lbl_desc.pack(anchor="w", padx=12, pady=(10, 2))
+
+        lbl_help = ctk.CTkLabel(
+            tab,
+            text="💡 Clique em qualquer campo e pressione as teclas no seu teclado para capturar o atalho.",
+            font=ctk.CTkFont(size=11),
+            text_color="#89B4FA"
+        )
+        lbl_help.pack(anchor="w", padx=12, pady=(0, 10))
 
         hotkeys = self.config_manager.hotkeys
         self.hotkey_entries = {}
+        self.hotkey_values = {}
 
         fields = [
             ("toggle_recording", "🎙 Gravar / Parar Pergunta:", hotkeys.get("toggle_recording", "<Control-space>")),
@@ -380,10 +485,22 @@ class SettingsWindow(ctk.CTkToplevel):
             lbl = ctk.CTkLabel(grid_frame, text=label, anchor="w", font=ctk.CTkFont(size=11), text_color="#CDD6F4")
             lbl.grid(row=idx, column=0, sticky="w", padx=(0, 10), pady=4)
 
-            entry = ctk.CTkEntry(grid_frame, width=180, height=28, fg_color="#11111B", border_color="#313244")
-            entry.insert(0, default_val)
+            entry = ctk.CTkEntry(
+                grid_frame,
+                width=190,
+                height=28,
+                fg_color="#11111B",
+                border_color="#313244",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                justify="center"
+            )
+            entry.insert(0, format_tk_to_user(default_val))
             entry.grid(row=idx, column=1, sticky="e", pady=4)
             self.hotkey_entries[key] = entry
+            self.hotkey_values[key] = default_val
+
+            # Vincula eventos para captura automática de teclas
+            self._setup_key_capture(key, entry)
 
         btn_row = ctk.CTkFrame(tab, fg_color="transparent")
         btn_row.pack(fill="x", padx=12, pady=(10, 10))
@@ -411,19 +528,57 @@ class SettingsWindow(ctk.CTkToplevel):
         )
         self.save_hotkeys_btn.pack(side="right")
 
+    def _setup_key_capture(self, key_id: str, entry: ctk.CTkEntry) -> None:
+        """Vincula eventos de foco e digitação para captura interativa de teclas."""
+        def on_focus_in(event):
+            entry.delete(0, "end")
+            entry.insert(0, "⌨ Pressione as teclas...")
+            entry.configure(border_color="#89B4FA", text_color="#89B4FA")
+
+        def on_key_press(event):
+            parsed = parse_key_event(event)
+            if parsed is not None:
+                tk_str, user_str = parsed
+                self.hotkey_values[key_id] = tk_str
+                entry.delete(0, "end")
+                entry.insert(0, user_str)
+                entry.configure(border_color="#313244", text_color="#CDD6F4")
+                self.focus_set()
+                return "break"
+            return "break"
+
+        def on_focus_out(event):
+            current = entry.get().strip()
+            if current == "⌨ Pressione as teclas..." or not current:
+                saved = self.hotkey_values.get(key_id, "")
+                entry.delete(0, "end")
+                entry.insert(0, format_tk_to_user(saved))
+            entry.configure(border_color="#313244", text_color="#CDD6F4")
+
+        entry.bind("<FocusIn>", on_focus_in)
+        entry.bind("<KeyPress>", on_key_press)
+        entry.bind("<FocusOut>", on_focus_out)
+
     def _restore_default_hotkeys(self) -> None:
         """Restaura campos para atalhos padrão."""
         defaults = DEFAULT_CONFIG["hotkeys"]
         for key, entry in self.hotkey_entries.items():
             if key in defaults:
+                def_val = defaults[key]
+                self.hotkey_values[key] = def_val
                 entry.delete(0, "end")
-                entry.insert(0, defaults[key])
+                entry.insert(0, format_tk_to_user(def_val))
+                entry.configure(border_color="#313244", text_color="#CDD6F4")
 
     def _save_hotkeys(self) -> None:
         """Salva mapa de atalhos e notifica callback."""
         updated = {}
         for key, entry in self.hotkey_entries.items():
-            val = entry.get().strip()
+            val = self.hotkey_values.get(key)
+            if not val:
+                raw_text = entry.get().strip()
+                if raw_text:
+                    val = raw_text
             if val:
                 updated[key] = val
 

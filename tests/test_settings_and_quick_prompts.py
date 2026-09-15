@@ -178,6 +178,35 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         app.llm_service.set_response_style.assert_called_with("tecnica")
         app.llm_service.set_system_prompt.assert_called_with("Nova Persona")
 
+    def test_key_capture_parsing_and_formatting(self):
+        try:
+            from settings_window import format_tk_to_user, parse_key_event
+        except ImportError:
+            from src.settings_window import format_tk_to_user, parse_key_event
+
+        self.assertEqual(format_tk_to_user("<Control-space>"), "Ctrl + Espaço")
+        self.assertEqual(format_tk_to_user("<Control-Return>"), "Ctrl + Enter")
+        self.assertEqual(format_tk_to_user("<Escape>"), "Esc")
+        self.assertEqual(format_tk_to_user("<F12>"), "F12")
+
+        class MockEvent:
+            def __init__(self, keysym, state):
+                self.keysym = keysym
+                self.state = state
+
+        # Modificador isolado (não deve disparar bind)
+        self.assertIsNone(parse_key_event(MockEvent("Control_L", 4)))
+
+        # Tecla com modificador
+        tk_bind, user_repr = parse_key_event(MockEvent("space", 4))
+        self.assertEqual(tk_bind, "<Control-space>")
+        self.assertEqual(user_repr, "Ctrl + Espaço")
+
+        # Tecla de função
+        tk_bind_f, user_repr_f = parse_key_event(MockEvent("F11", 0))
+        self.assertEqual(tk_bind_f, "<F11>")
+        self.assertEqual(user_repr_f, "F11")
+
 
 if __name__ == "__main__":
     unittest.main()
