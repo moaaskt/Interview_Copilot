@@ -24,14 +24,21 @@ logger = logging.getLogger("InterviewCopilot")
 
 class CopilotApp:
     def __init__(self) -> None:
-        # override=True garante que as variáveis definidas no .env prevaleçam sobre exportações antigas do shell
-        load_dotenv(override=True)
+        # Carrega o .env a partir da raiz do projeto com caminho absoluto
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_path = os.path.join(project_root, ".env")
+        load_dotenv(dotenv_path=env_path, override=True)
 
         self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
         self.groq_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
 
         if not self.deepgram_key or not self.groq_key:
-            logger.error("Chaves DEEPGRAM_API_KEY e GROQ_API_KEY devem ser configuradas no arquivo .env!")
+            missing = []
+            if not self.deepgram_key:
+                missing.append("DEEPGRAM_API_KEY")
+            if not self.groq_key:
+                missing.append("GROQ_API_KEY (ou OPENAI_API_KEY)")
+            logger.error(f"Configuração incompleta no arquivo .env ({env_path}). Chave(s) ausente(s): {', '.join(missing)}")
             sys.exit(1)
 
         self.ui = CopilotUI(

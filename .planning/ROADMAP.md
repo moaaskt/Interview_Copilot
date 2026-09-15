@@ -1,6 +1,7 @@
 # Roadmap do Projeto
 
 ## Fase 1: Atalhos de Teclado & Usabilidade Rápida
+
 - **Objetivo**: Permitir controle total da gravação e resposta sem desviar a atenção ou perder foco da janela de entrevista.
 - **Entregas**:
   - Atalhos no CustomTkinter / Tk bindings para Gravar/Parar (`<Control-space>` ou `<F9>`), Responder Agora (`<Control-Return>`) e Limpar (`<Control-BackSpace>`).
@@ -8,6 +9,7 @@
 - **Status**: Concluída.
 
 ## Fase 2: Refinamento de UX do Overlay & Auto-scroll Inteligente
+
 - **Objetivo**: Tornar a leitura durante a entrevista ultra-confortável, fluida e discreta.
 - **Entregas**:
   - Auto-scroll adaptativo nos widgets de texto para tokens da Groq.
@@ -16,8 +18,20 @@
 - **Status**: Concluída.
 
 ## Fase 3: Feedback Visual de Áudio & Resiliência
+
 - **Objetivo**: Garantir segurança total ao usuário de que o áudio está sendo captado antes de falar.
 - **Entregas**:
   - Mini VU-meter ou indicador de pulso luminoso baseado no RMS do sinal de áudio.
   - Indicador de estado de conexão WebSocket Deepgram com tentativa de reconexão transparente.
 - **Status**: Concluída.
+
+### Phase 4: Tela de Configurações & Quick Prompts de Entrevista
+
+**Goal:** Implementar janela de configurações do helpIA contendo seleção de dispositivo de áudio/placa de som, medidor de nível em tempo real reaproveitando o VU-meter do header, editor de system prompt (contexto do candidato), atalhos de teclado customizáveis, estilo de resposta da IA (direta vs. técnica) e botões de perguntas rápidas de entrevista técnica com disparo imediato.
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 4 to break down)

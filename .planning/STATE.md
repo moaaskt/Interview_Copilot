@@ -2,8 +2,8 @@
 
 ## Status Atual
 - **Projeto**: Interview Copilot (`helpIA`)
-- **Fase Ativa**: Milestone v1.0 Finalizado (Relatório gerado em `.planning/reports/MILESTONE_SUMMARY-v1.0.md`)
-- **Próximo Passo**: Arquivar milestone (`/gsd-complete-milestone`) ou iniciar novo ciclo (`/gsd-new-milestone`)
+- **Fase Ativa**: Fase 4: Tela de Configurações & Quick Prompts de Entrevista (Aguardando planejamento)
+- **Próximo Passo**: `/gsd-plan-phase 4`
 
 ## Marcos Concluídos
 - [x] Mapeamento completo do codebase (`.planning/codebase/`)
@@ -12,6 +12,11 @@
 - [x] Fase 1: Atalhos de Teclado & Usabilidade Rápida (`Ctrl+Space`, `Ctrl+Enter`, `Esc`)
 - [x] Fase 2: Refinamento de UX do Overlay & Auto-scroll Inteligente (`F8` Presets, `F10` Opacidade, Auto-scroll adaptativo)
 - [x] Fase 3: Feedback Visual de Áudio & Resiliência (Mini VU-Meter RMS, Reconexão Automática Deepgram)
+
+## Accumulated Context
+
+### Roadmap Evolution
+- Phase 4 added: Tela de Configurações & Quick Prompts de Entrevista
 
 ## Decisões Arquiteturais
 - **Foco do Ciclo**: Evolução de UX/UI e Usabilidade do Overlay HUD.
