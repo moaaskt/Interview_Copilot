@@ -41,13 +41,60 @@ class CopilotUI(ctk.CTk):
         self._offset_y = 0
         self._is_recording = False
 
-        # Configuração de Opacidade Dinâmica
-        self._opacity_levels = [0.92, 1.0, 0.75, 0.85]
+        # Perfis de Visibilidade / Opacidade Dinâmica (compatível com Linux Wayland/X11 e Windows)
+        self._opacity_profiles = [
+            {
+                "alpha": 0.92,
+                "label": "👓 92% Padrão",
+                "main_bg": "#1E1E2E",
+                "header_bg": "#181825",
+                "textbox_bg": "#11111B",
+                "ai_text": "#A6E3A1",
+                "tx_text": "#CDD6F4",
+                "border": "#313244",
+            },
+            {
+                "alpha": 1.0,
+                "label": "👓 100% Foco",
+                "main_bg": "#181825",
+                "header_bg": "#11111B",
+                "textbox_bg": "#0D0E15",
+                "ai_text": "#50FA7B",
+                "tx_text": "#FFFFFF",
+                "border": "#89B4FA",
+            },
+            {
+                "alpha": 0.75,
+                "label": "👓 75% Discreto",
+                "main_bg": "#0F0F17",
+                "header_bg": "#090A0F",
+                "textbox_bg": "#06060A",
+                "ai_text": "#73B88A",
+                "tx_text": "#9399B2",
+                "border": "#1E1E2E",
+            },
+            {
+                "alpha": 0.85,
+                "label": "👓 85% Suave",
+                "main_bg": "#161622",
+                "header_bg": "#11111B",
+                "textbox_bg": "#0D0E15",
+                "ai_text": "#8ADAA8",
+                "tx_text": "#BAC2DE",
+                "border": "#272838",
+            },
+        ]
         self._current_opacity_idx = 0
 
         # Presets de Posicionamento Rápido
         self._position_presets = ["top-center", "top-right", "top-left", "center"]
         self._current_position_idx = 0
+
+        # Coordenadas do arrasto suave
+        self._drag_mouse_x = 0
+        self._drag_mouse_y = 0
+        self._drag_win_x = 0
+        self._drag_win_y = 0
 
         self._setup_ui()
 
@@ -119,12 +166,12 @@ class CopilotUI(ctk.CTk):
         )
         self.preset_pos_btn.pack(side="right", padx=2)
 
-        # Botão para Ciclo de Opacidade
+        # Botão para Ciclo de Opacidade / Stealth Mode
         self.opacity_btn = ctk.CTkButton(
             self.header_frame,
-            text=f"👓 {int(self._opacity_levels[self._current_opacity_idx] * 100)}%",
+            text=self._opacity_profiles[self._current_opacity_idx]["label"],
             font=("Helvetica", 9),
-            width=58,
+            width=88,
             height=24,
             fg_color="transparent",
             hover_color="#313244",
@@ -132,8 +179,8 @@ class CopilotUI(ctk.CTk):
         )
         self.opacity_btn.pack(side="right", padx=2)
 
-        # Eventos do mouse para arrastar a janela sem barra de título
-        for widget in (self.header_frame, self.title_label, self.status_badge, self.audio_meter_label):
+        # Eventos do mouse para arrastar a janela sem travar nem saltar
+        for widget in (self.header_frame, self.title_label):
             widget.bind("<Button-1>", self._start_drag)
             widget.bind("<B1-Motion>", self._drag)
 
@@ -231,16 +278,22 @@ class CopilotUI(ctk.CTk):
         widget.bind("<Button-1>", self._start_drag)
         widget.bind("<B1-Motion>", self._drag)
 
-    def _start_drag(self, event) -> None:
-        """Calcula o offset estático do mouse em relação ao canto superior esquerdo da janela."""
-        self._offset_x = event.x_root - self.winfo_x()
-        self._offset_y = event.y_root - self.winfo_y()
+    def _start_drag(self, event) -> Optional[str]:
+        """Salva a posição inicial de tela do ponteiro e da janela para arrasto relativo suave."""
+        self._drag_mouse_x = event.x_root
+        self._drag_mouse_y = event.y_root
+        self._drag_win_x = self.winfo_x()
+        self._drag_win_y = self.winfo_y()
+        return "break"
 
-    def _drag(self, event) -> None:
-        """Define a posição da janela diretamente pelo cursor menos o offset do clique inicial."""
-        x = event.x_root - self._offset_x
-        y = event.y_root - self._offset_y
-        self.geometry(f"+{x}+{y}")
+    def _drag(self, event) -> Optional[str]:
+        """Calcula deslocamento relativo e move a janela suavemente sem travar o ponteiro."""
+        dx = event.x_root - self._drag_mouse_x
+        dy = event.y_root - self._drag_mouse_y
+        new_x = self._drag_win_x + dx
+        new_y = self._drag_win_y + dy
+        self.geometry(f"520x390+{new_x}+{new_y}")
+        return "break"
 
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
         if self.on_toggle_recording:
@@ -323,41 +376,91 @@ class CopilotUI(ctk.CTk):
             self.ai_textbox.see("end")
 
     def cycle_opacity(self, event=None) -> Optional[str]:
-        """Alterna ciclicamente a opacidade da janela HUD."""
-        self._current_opacity_idx = (self._current_opacity_idx + 1) % len(self._opacity_levels)
-        val = self._opacity_levels[self._current_opacity_idx]
-        self.attributes("-alpha", val)
-        pct = int(val * 100)
-        self.opacity_btn.configure(text=f"👓 {pct}%")
-        logger.info(f"Opacidade alterada para {pct}%")
+        """Alterna ciclicamente a opacidade e o tema visual (stealth/densidade) da janela HUD."""
+        self._current_opacity_idx = (self._current_opacity_idx + 1) % len(self._opacity_profiles)
+        prof = self._opacity_profiles[self._current_opacity_idx]
+
+        # 1. Aplica opacidade nativa de janela (quando suportada pelo compositor/OS)
+        try:
+            self.attributes("-alpha", prof["alpha"])
+        except Exception:
+            pass
+
+        # 2. Atualiza estilos visuais dinamicamente (garante feedback visual imediato até no Wayland/COSMIC)
+        self.main_frame.configure(fg_color=prof["main_bg"], border_color=prof["border"])
+        self.header_frame.configure(bg=prof["header_bg"])
+        self.title_label.configure(bg=prof["header_bg"])
+        self.status_badge.configure(bg=prof["header_bg"])
+        self.audio_meter_label.configure(bg=prof["header_bg"])
+
+        self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
+        self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
+
+        self.opacity_btn.configure(text=prof["label"])
+        logger.info(f"Tema e opacidade alterados para: {prof['label']}")
         return "break"
 
+    def _get_active_monitor(self) -> tuple[int, int, int, int]:
+        """
+        Detecta as coordenadas reais (origem_x, origem_y, largura, altura) do monitor ativo.
+        Suporta multi-monitores de diferentes orientações (ex: horizontal + vertical),
+        evitando que a janela caia em áreas mortas fora da tela.
+        """
+        import subprocess
+        import re
+
+        monitors = []
+        try:
+            out = subprocess.check_output(["xrandr", "--current"], stderr=subprocess.DEVNULL, text=True)
+            for line in out.splitlines():
+                if " connected " in line:
+                    m = re.search(r"(\d+)x(\d+)\+(\d+)\+(\d+)", line)
+                    if m:
+                        mw, mh, mx, my = map(int, m.groups())
+                        monitors.append((mx, my, mw, mh))
+        except Exception:
+            pass
+
+        if not monitors:
+            return 0, 0, self.winfo_screenwidth(), self.winfo_screenheight()
+
+        # Centro atual da janela
+        win_cx = self.winfo_x() + 260
+        win_cy = self.winfo_y() + 195
+
+        for mx, my, mw, mh in monitors:
+            if mx <= win_cx < mx + mw and my <= win_cy < my + mh:
+                return mx, my, mw, mh
+
+        # Se a janela caiu fora dos limites de todos os monitores, ancora no maior/principal
+        monitors.sort(key=lambda m: m[2] * m[3], reverse=True)
+        return monitors[0]
+
     def cycle_window_position(self, event=None) -> Optional[str]:
-        """Reposiciona a janela HUD rapidamente nos 4 presets estratégicos de tela."""
+        """Reposiciona a janela HUD nos 4 presets estratégicos do monitor ativo."""
         preset = self._position_presets[self._current_position_idx]
         self._current_position_idx = (self._current_position_idx + 1) % len(self._position_presets)
 
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
+        mx, my, mw, mh = self._get_active_monitor()
         w = 520
         h = 390
 
         if preset == "top-center":
-            # Ancorado logo abaixo da webcam para contato visual direto
-            x = max(0, (sw - w) // 2)
-            y = 20
+            # Ancorado logo abaixo da webcam no topo do monitor ativo
+            x = mx + max(0, (mw - w) // 2)
+            y = my + 20
         elif preset == "top-right":
-            x = max(0, sw - w - 20)
-            y = 20
+            x = mx + max(0, mw - w - 20)
+            y = my + 20
         elif preset == "top-left":
-            x = 20
-            y = 20
+            x = mx + 20
+            y = my + 20
         else:  # "center"
-            x = max(0, (sw - w) // 2)
-            y = max(0, (sh - h) // 2)
+            x = mx + max(0, (mw - w) // 2)
+            y = my + max(0, (mh - h) // 2)
 
         self.geometry(f"{w}x{h}+{x}+{y}")
-        logger.info(f"Janela HUD posicionada em '{preset}' ({x}, {y})")
+        logger.info(f"Janela HUD posicionada em '{preset}' ({x}, {y}) no monitor ({mx}, {my}, {mw}x{mh})")
         return "break"
 
     def clear_ai_response(self) -> None:

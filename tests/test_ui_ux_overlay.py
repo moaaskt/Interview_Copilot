@@ -67,6 +67,33 @@ class TestCopilotUIUXOverlay(unittest.TestCase):
         self.app.append_ai_token("Novo token que não deve forçar scroll")
         self.app.ai_textbox.see.assert_not_called()
 
+    def test_drag_smooth_delta_calculation(self):
+        mock_event_click = MagicMock(x_root=1000, y_root=500)
+        res_start = self.app._start_drag(mock_event_click)
+        self.assertEqual(res_start, "break")
+        self.assertEqual(self.app._drag_mouse_x, 1000)
+        self.assertEqual(self.app._drag_mouse_y, 500)
+
+        # Simula movimento de 40px no X e 20px no Y
+        mock_event_move = MagicMock(x_root=1040, y_root=520)
+        res_drag = self.app._drag(mock_event_move)
+        self.assertEqual(res_drag, "break")
+
+    def test_multi_monitor_bounds_detection(self):
+        mx, my, mw, mh = self.app._get_active_monitor()
+        self.assertGreater(mw, 0)
+        self.assertGreater(mh, 0)
+        self.assertGreaterEqual(mx, 0)
+        self.assertGreaterEqual(my, 0)
+
+    def test_cycle_opacity_changes_visual_styles(self):
+        initial_bg = self.app.main_frame.cget("fg_color")
+        self.app.cycle_opacity()
+        new_bg = self.app.main_frame.cget("fg_color")
+        # Deve ter alterado a cor de fundo visualmente
+        self.assertNotEqual(initial_bg, new_bg)
+
 
 if __name__ == "__main__":
     unittest.main()
+
