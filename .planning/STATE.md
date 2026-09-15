@@ -3,7 +3,7 @@
 ## Status Atual
 - **Projeto**: Interview Copilot (`helpIA`)
 - **Fase Ativa**: Fase 3 - Feedback Visual de Áudio & Resiliência
-- **Próximo Passo**: Iniciar planejamento da Fase 3 (`/gsd-plan-phase 3`)
+- **Próximo Passo**: Executar a Fase 3 (`/gsd-execute-phase 3`)
 
 ## Marcos Concluídos
 - [x] Mapeamento completo do codebase (`.planning/codebase/`)
