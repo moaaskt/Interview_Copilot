@@ -68,6 +68,47 @@ class TestCopilotUIShortcuts(unittest.TestCase):
         self.assertTrue(any("Return" in b for b in bound_events))
         self.assertTrue(any("Escape" in b for b in bound_events))
 
+    def test_custom_configured_hotkeys_reflected_in_button_labels(self):
+        mock_custom_cfg = MagicMock()
+        mock_custom_cfg.hotkeys = {
+            "toggle_recording": "<Alt-Shift-F7>",
+            "respond_now": "<Alt-Shift-F8>",
+            "clear_session": "<Alt-Shift-BackSpace>",
+        }
+        mock_custom_cfg.quick_questions = []
+
+        custom_ui = CopilotUI(config_manager=mock_custom_cfg)
+        try:
+            self.assertIn("[Alt+Shift+F7]", custom_ui.record_btn.cget("text"))
+            self.assertIn("[Alt+Shift+F8]", custom_ui.respond_btn.cget("text"))
+            self.assertIn("[Alt+Shift+Backspace]", custom_ui.clear_btn.cget("text"))
+
+            # Alternar gravação preserva o atalho customizado
+            custom_ui.set_recording_state(True)
+            self.assertIn("⏹ Parar [Alt+Shift+F7]", custom_ui.record_btn.cget("text"))
+            custom_ui.set_recording_state(False)
+            self.assertIn("🎙 Gravar [Alt+Shift+F7]", custom_ui.record_btn.cget("text"))
+        finally:
+            try:
+                custom_ui.destroy()
+            except Exception:
+                pass
+
+    def test_apply_hotkeys_updates_hud_button_labels_dynamically(self):
+        new_hotkeys = {
+            "toggle_recording": "<Control-F1>",
+            "respond_now": "<Control-F2>",
+            "clear_session": "<Control-F3>",
+        }
+        self.app.apply_hotkeys(new_hotkeys)
+
+        self.assertIn("[Ctrl+F1]", self.app.record_btn.cget("text"))
+        self.assertIn("[Ctrl+F2]", self.app.respond_btn.cget("text"))
+        self.assertIn("[Ctrl+F3]", self.app.clear_btn.cget("text"))
+
+        self.app.set_recording_state(True)
+        self.assertIn("⏹ Parar [Ctrl+F1]", self.app.record_btn.cget("text"))
+
 
 if __name__ == "__main__":
     unittest.main()
