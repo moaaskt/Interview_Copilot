@@ -67,6 +67,7 @@ class CopilotApp:
         self.audio_capture = AudioCapture(
             audio_callback=self.on_audio_data,
             device_index=self.config_manager.audio_device_index,
+            device_name=self.config_manager.audio_device_name,
         )
 
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -90,7 +91,7 @@ class CopilotApp:
     def on_device_change(self, device_idx: Optional[int], device_name: str) -> None:
         """Callback chamada quando o usuário altera o dispositivo de áudio na tela de configurações."""
         logger.info(f"Alterando dispositivo de áudio para: [{device_idx}] {device_name}")
-        self.audio_capture.set_device(device_idx, self.loop)
+        self.audio_capture.set_device(device_idx, self.loop, device_name=device_name)
         self.ui.set_status(f"● Áudio: {device_name[:18]}", "#A6E3A1")
 
     def on_llm_change(self, style: str, custom_persona: Optional[str]) -> None:

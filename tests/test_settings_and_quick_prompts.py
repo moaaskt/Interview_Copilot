@@ -170,7 +170,7 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
 
         # Alteração de Dispositivo de Áudio
         app.on_device_change(2, "Fones de ouvido USB")
-        app.audio_capture.set_device.assert_called_with(2, None)
+        app.audio_capture.set_device.assert_called_with(2, None, device_name="Fones de ouvido USB")
         app.ui.set_status.assert_called()
 
         # Alteração de Configurações de IA

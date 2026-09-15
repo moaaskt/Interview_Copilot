@@ -35,11 +35,13 @@ class AudioCapture:
         sample_rate: int = 16000,
         chunk_duration: float = 0.1,
         device_index: Optional[int | str] = None,
+        device_name: Optional[str] = None,
     ) -> None:
         self.audio_callback = audio_callback
         self.sample_rate = sample_rate
         self.chunk_size = int(sample_rate * chunk_duration)
         self.device_index = device_index
+        self.device_name = device_name
         self.is_running = False
         self._current_loop: Optional[asyncio.AbstractEventLoop] = None
 
@@ -116,20 +118,43 @@ class AudioCapture:
 
         return default_speakers
 
+    def _find_windows_loopback(self, pa) -> dict:
+        """Localiza com resiliência o dispositivo loopback WASAPI correspondente (por nome, índice ou default)."""
+        loopbacks = list(pa.get_loopback_device_info_generator())
+        if not loopbacks:
+            logger.warning("[Windows] Nenhum dispositivo loopback WASAPI encontrado.")
+            return self._get_windows_loopback_device(pa)
+
+        # 1. Se foi passado device_name específico, tenta encontrar por nome entre os loopbacks
+        if self.device_name and self.device_name != "Padrão do Sistema":
+            clean_target = self.device_name.replace("[Loopback]", "").strip().lower()
+            for lb in loopbacks:
+                clean_lb = lb["name"].replace("[Loopback]", "").strip().lower()
+                if clean_target in clean_lb or clean_lb in clean_target:
+                    logger.info(f"[Windows] Dispositivo loopback resolvido por nome '{self.device_name}': [{lb['index']}] {lb['name']}")
+                    return lb
+
+        # 2. Se foi passado device_index, verifica se corresponde a um loopback válido
+        if self.device_index is not None:
+            try:
+                idx_int = int(self.device_index)
+                for lb in loopbacks:
+                    if lb["index"] == idx_int:
+                        logger.info(f"[Windows] Dispositivo loopback resolvido por índice [{idx_int}]: {lb['name']}")
+                        return lb
+            except Exception:
+                pass
+
+        # 3. Fallback: usa o loopback padrão da saída ativa do Windows
+        logger.info("[Windows] Usando dispositivo loopback padrão do Windows.")
+        return self._get_windows_loopback_device(pa)
+
     def _start_windows(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio no Windows usando WASAPI loopback."""
         self._pa = pyaudio.PyAudio()
         try:
-            if self.device_index is not None:
-                try:
-                    device_info = self._pa.get_device_info_by_index(int(self.device_index))
-                    logger.info(f"[Windows] Usando dispositivo especificado [{self.device_index}]: {device_info['name']}")
-                except Exception as e:
-                    logger.warning(f"[Windows] Dispositivo {self.device_index} inválido ({e}). Usando padrão.")
-                    device_info = self._get_windows_loopback_device(self._pa)
-            else:
-                device_info = self._get_windows_loopback_device(self._pa)
-                logger.info(f"[Windows] Iniciando captura loopback no dispositivo: {device_info['name']}")
+            device_info = self._find_windows_loopback(self._pa)
+            logger.info(f"[Windows] Iniciando captura loopback no dispositivo: [{device_info['index']}] {device_info['name']}")
 
             # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
             native_channels = int(device_info.get("maxInputChannels", 2)) or 1
@@ -318,15 +343,22 @@ class AudioCapture:
         else:
             self._start_linux(loop)
 
-    def set_device(self, device_index: Optional[int | str], loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        """Altera o dispositivo de captura ativo e reinicia o stream se estiver rodando."""
+    def set_device(
+        self,
+        device_index: Optional[int | str],
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        device_name: Optional[str] = None,
+    ) -> None:
+        """Altera o dispositivo de captura ativo e reinicia o stream."""
         self.device_index = device_index
+        if device_name is not None:
+            self.device_name = device_name
         target_loop = loop or self._current_loop
+        logger.info(f"Alterando dispositivo de áudio para [{device_index}] {self.device_name}...")
         if self.is_running:
-            logger.info(f"Reiniciando captura de áudio para o dispositivo [{device_index}]...")
             self.stop()
-            if target_loop:
-                self.start(target_loop)
+        if target_loop:
+            self.start(target_loop)
 
     def stop(self) -> None:
         """Para e encerra os recursos de áudio."""
