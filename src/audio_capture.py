@@ -48,6 +48,7 @@ class AudioCapture:
         # Recursos Windows
         self._pa: Optional[any] = None
         self._win_stream = None
+        self._keepalive_stream = None
 
         # Recursos Linux
         self._linux_stream = None
@@ -149,12 +150,67 @@ class AudioCapture:
         logger.info("[Windows] Usando dispositivo loopback padrão do Windows.")
         return self._get_windows_loopback_device(pa)
 
+    def _find_windows_render_device(self, pa, loopback_info: dict) -> Optional[dict]:
+        """Localiza o dispositivo de reprodução (alto-falantes/fones) correspondente ao loopback na mesma hostApi (WASAPI)."""
+        clean_name = loopback_info.get("name", "").replace("[Loopback]", "").strip().lower()
+        target_api = loopback_info.get("hostApi")
+
+        # 1. Procura dispositivo de saída com nome correspondente na mesma hostApi (WASAPI)
+        for i in range(pa.get_device_count()):
+            dev = pa.get_device_info_by_index(i)
+            if dev.get("hostApi") == target_api and dev.get("maxOutputChannels", 0) > 0 and not dev.get("isLoopbackDevice", False):
+                dev_clean = dev.get("name", "").strip().lower()
+                if clean_name and (clean_name in dev_clean or dev_clean in clean_name):
+                    logger.info(f"[Windows Keep-Alive] Dispositivo de saída WASAPI correspondente encontrado: [{dev['index']}] {dev['name']}")
+                    return dev
+
+        # 2. Se não achou por nome na mesma API, tenta qualquer saída na mesma hostApi
+        for i in range(pa.get_device_count()):
+            dev = pa.get_device_info_by_index(i)
+            if dev.get("hostApi") == target_api and dev.get("maxOutputChannels", 0) > 0 and not dev.get("isLoopbackDevice", False):
+                logger.info(f"[Windows Keep-Alive] Usando dispositivo de saída WASAPI alternativo: [{dev['index']}] {dev['name']}")
+                return dev
+
+        # 3. Fallback para o dispositivo padrão de saída do WASAPI
+        try:
+            wasapi_info = pa.get_host_api_info_by_type(pyaudio.paWASAPI)
+            default_out = pa.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+            logger.info(f"[Windows Keep-Alive] Usando dispositivo de saída padrão: [{default_out['index']}] {default_out['name']}")
+            return default_out
+        except Exception as e:
+            logger.warning(f"[Windows Keep-Alive] Não foi possível encontrar dispositivo de saída padrão: {e}")
+            return None
+
     def _start_windows(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Inicia a captura de áudio no Windows usando WASAPI loopback."""
+        """Inicia a captura de áudio no Windows usando WASAPI loopback com keep-alive contínuo."""
         self._pa = pyaudio.PyAudio()
         try:
             device_info = self._find_windows_loopback(self._pa)
             logger.info(f"[Windows] Iniciando captura loopback no dispositivo: [{device_info['index']}] {device_info['name']}")
+
+            # Inicia stream keep-alive silencioso no dispositivo de saída correspondente
+            # Isso força o driver de áudio (ex: headsets wireless USB) e o motor WASAPI a manterem
+            # buffers ativos mesmo quando nada está tocando no sistema, eliminando a perda de pacotes em silêncio.
+            try:
+                render_device = self._find_windows_render_device(self._pa, device_info)
+                if render_device:
+                    out_channels = int(render_device.get("maxOutputChannels", 2)) or 2
+                    out_rate = int(render_device.get("defaultSampleRate", 48000)) or 48000
+                    def silent_callback(in_data, frame_count, time_info, status):
+                        return (b"\x00" * (frame_count * 2 * out_channels), pyaudio.paContinue)
+
+                    self._keepalive_stream = self._pa.open(
+                        format=pyaudio.paInt16,
+                        channels=out_channels,
+                        rate=out_rate,
+                        output=True,
+                        output_device_index=render_device["index"],
+                        stream_callback=silent_callback,
+                    )
+                    self._keepalive_stream.start_stream()
+                    logger.info(f"[Windows Keep-Alive] Stream silencioso ativo em [{render_device['index']}] {render_device['name']} para manter WASAPI acordado.")
+            except Exception as e:
+                logger.warning(f"[Windows Keep-Alive] Não foi possível iniciar stream silencioso keep-alive: {e}")
 
             # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
             native_channels = int(device_info.get("maxInputChannels", 2)) or 1
@@ -365,6 +421,15 @@ class AudioCapture:
         self.is_running = False
 
         # Encerramento Windows
+        if self._keepalive_stream:
+            try:
+                self._keepalive_stream.stop_stream()
+                self._keepalive_stream.close()
+            except Exception as e:
+                logger.error(f"Erro ao fechar stream keep-alive Windows: {e}")
+            finally:
+                self._keepalive_stream = None
+
         if self._win_stream:
             try:
                 self._win_stream.stop_stream()
