@@ -1,7 +1,8 @@
 import logging
 import os
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Callable
 from openai import AsyncOpenAI
+import google.generativeai as genai
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,8 @@ class LLMService:
         model: Optional[str] = None,
         response_style: str = "direta",
         custom_persona: Optional[str] = None,
+        gemini_api_key: Optional[str] = None,
+        on_provider_change: Optional[Callable[[str], None]] = None,
     ) -> None:
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -84,6 +87,12 @@ class LLMService:
         self.model = model or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
         self.response_style = response_style if response_style in RESPONSE_STYLES else "direta"
         self.persona = custom_persona or DEFAULT_PERSONA
+        self.on_provider_change = on_provider_change
+        
+        self.gemini_api_key = gemini_api_key
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
+            logger.info("Gemini API configurada para fallback.")
 
     def set_response_style(self, style: str) -> None:
         """Define o estilo de resposta da IA ('direta', 'tecnica', 'star')."""
@@ -137,8 +146,10 @@ class LLMService:
     async def stream_response(self, user_question: str) -> AsyncGenerator[str, None]:
         """
         Envia a transcrição da pergunta para a API da Groq com stream=True
-        e gera tokens em tempo real.
+        e gera tokens em tempo real. Implementa fallback automático para Gemini.
         """
+        if self.on_provider_change:
+            self.on_provider_change("Groq")
         effective_prompt = self.get_effective_system_prompt()
         if "qwen" in self.model.lower():
             effective_prompt = self._fit_prompt_to_budget(effective_prompt, max_chars=18000)
@@ -188,4 +199,35 @@ class LLMService:
                     logger.error(f"[LLMService] Falha na recuperação de erro 413: {retry_err}")
 
             logger.error(f"Erro ao comunicar com a Groq: {e}")
-            yield f"\n[Erro Groq: {str(e)}]"
+            if self.gemini_api_key:
+                logger.info("[LLMService] Iniciando fallback transparente para Gemini (gemini-2.5-flash)...")
+                if self.on_provider_change:
+                    self.on_provider_change("Gemini")
+                
+                async for token in self._stream_gemini_fallback(user_question, effective_prompt, max_tokens):
+                    yield token
+                return
+            else:
+                yield f"\n[Erro Groq e sem chave Gemini: {str(e)}]"
+
+    async def _stream_gemini_fallback(self, user_question: str, system_prompt: str, max_tokens: int) -> AsyncGenerator[str, None]:
+        """
+        Gera resposta em stream usando a API do Google Gemini como fallback.
+        """
+        try:
+            model = genai.GenerativeModel(
+                model_name="gemini-2.5-flash",
+                system_instruction=system_prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=0.3,
+                )
+            )
+            # Como a lib google-generativeai em python (síncrona base) suporta async streams:
+            response = await model.generate_content_async(user_question, stream=True)
+            async for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+        except Exception as e:
+            logger.error(f"[LLMService] Falha absoluta também no fallback Gemini: {e}")
+            yield f"\n[Falha Crítica LLM - Groq e Gemini indisponíveis]"

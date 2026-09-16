@@ -153,6 +153,17 @@ class CopilotUI(ctk.CTk):
         )
         self.status_badge.pack(side="left", padx=(8, 4))
 
+        # Badge do Provedor de IA
+        self.provider_badge = tk.Label(
+            self.header_frame,
+            text="🤖 IA: Groq",
+            font=("Helvetica", 9, "bold"),
+            fg="#89DCEB",
+            bg="#181825",
+            cursor="fleur"
+        )
+        self.provider_badge.pack(side="left", padx=4)
+
         # Indicador de Nível de Áudio (Mini VU-Meter)
         self.audio_meter_label = tk.Label(
             self.header_frame,
@@ -625,8 +636,19 @@ class CopilotUI(ctk.CTk):
             )
 
     def set_status(self, text: str, color: str = "#A6ADC8") -> None:
-        """Atualiza a mensagem e cor do badge de status."""
-        self.status_badge.configure(text=text, fg=color)
+        """Atualiza a badge de status (ex: Gravando, Pronto, Reconectando)."""
+        if self.status_badge.winfo_exists():
+            self.status_badge.config(text=text, fg=color)
+
+    def set_ai_provider(self, provider_name: str) -> None:
+        """Atualiza a badge de provedor de IA atual no HUD."""
+        if self.provider_badge.winfo_exists():
+            if "Groq" in provider_name:
+                self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#89DCEB") # Azul Groq
+            elif "Gemini" in provider_name:
+                self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#F9E2AF") # Amarelo Gemini
+            else:
+                self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#CBA6F7")
 
     def update_transcription(self, text: str, is_final: bool = False) -> None:
         """Atualiza a caixa de transcrição."""
