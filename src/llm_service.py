@@ -200,7 +200,7 @@ class LLMService:
 
             logger.error(f"Erro ao comunicar com a Groq: {e}")
             if self.gemini_api_key:
-                logger.info("[LLMService] Iniciando fallback transparente para Gemini (gemini-2.5-flash)...")
+                logger.info("[LLMService] Iniciando fallback transparente para Gemini (gemini-flash-latest)...")
                 if self.on_provider_change:
                     self.on_provider_change("Gemini")
                 
@@ -216,7 +216,7 @@ class LLMService:
         """
         try:
             model = genai.GenerativeModel(
-                model_name="gemini-2.5-flash",
+                model_name="gemini-flash-latest",
                 system_instruction=system_prompt,
                 generation_config=genai.GenerationConfig(
                     max_output_tokens=max_tokens,
