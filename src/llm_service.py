@@ -200,7 +200,8 @@ class LLMService:
 
             logger.error(f"Erro ao comunicar com a Groq: {e}")
             if self.gemini_api_key:
-                logger.info("[LLMService] Iniciando fallback transparente para Gemini (gemini-flash-latest)...")
+                gemini_model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+                logger.info(f"[LLMService] Iniciando fallback transparente para Gemini ({gemini_model_name})...")
                 if self.on_provider_change:
                     self.on_provider_change("Gemini")
                 
@@ -215,15 +216,16 @@ class LLMService:
         Gera resposta em stream usando a API do Google Gemini como fallback.
         """
         try:
+            gemini_model_name = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
             model = genai.GenerativeModel(
-                model_name="gemini-flash-latest",
+                model_name=gemini_model_name,
                 system_instruction=system_prompt,
                 generation_config=genai.GenerationConfig(
                     max_output_tokens=max_tokens,
                     temperature=0.3,
                 )
             )
-            # Como a lib google-generativeai em python (síncrona base) suporta async streams:
+            # Executa streaming assíncrono token a token (chunk por chunk)
             response = await model.generate_content_async(user_question, stream=True)
             async for chunk in response:
                 if chunk.text:
