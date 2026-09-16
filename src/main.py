@@ -33,6 +33,7 @@ class CopilotApp:
 
         self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
         self.groq_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.gemini_key = os.getenv("GEMINI_API_KEY")
 
         if not self.deepgram_key or not self.groq_key:
             missing = []
@@ -57,8 +58,10 @@ class CopilotApp:
         )
         self.llm_service = LLMService(
             api_key=self.groq_key,
+            gemini_api_key=self.gemini_key,
             response_style=self.config_manager.response_style,
             custom_persona=self.config_manager.custom_persona,
+            on_provider_change=self.on_provider_change,
         )
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
@@ -123,6 +126,13 @@ class CopilotApp:
         """Callback chamada quando o usuário altera os atalhos na tela de configurações."""
         logger.info(f"Atualizando atalhos globais no HotkeyManager: {new_hotkeys}")
         self.hotkey_manager.update_hotkeys(new_hotkeys)
+
+    def on_provider_change(self, provider_name: str) -> None:
+        """Callback chamada quando o serviço LLM altera o provedor (ex: de Groq para Gemini)."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.set_ai_provider, provider_name)
+        else:
+            self.ui.set_ai_provider(provider_name)
 
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""
