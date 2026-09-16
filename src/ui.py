@@ -278,8 +278,31 @@ class CopilotUI(ctk.CTk):
 
         # Barra de Perguntas Rápidas de Entrevista (Quick Prompts)
         self.quick_prompts_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.quick_prompts_frame.pack(fill="x", padx=12, pady=(2, 4))
+        self.quick_prompts_frame.pack(fill="x", padx=12, pady=(2, 2))
         self._build_quick_prompt_buttons()
+
+        # Barra de Consumo de Tokens (TPM Progress Bar)
+        self.token_usage_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.token_usage_frame.pack(fill="x", padx=12, pady=(2, 2))
+
+        self.token_progressbar = ctk.CTkProgressBar(
+            self.token_usage_frame,
+            height=5,
+            corner_radius=3,
+            fg_color="#313244",
+            progress_color="#A6E3A1"
+        )
+        self.token_progressbar.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.token_progressbar.set(0.0)
+
+        self.token_usage_label = tk.Label(
+            self.token_usage_frame,
+            text="⚡ TPM: 0 / 7000 (0%)",
+            font=("Helvetica", 8, "bold"),
+            fg="#A6ADC8",
+            bg="#1E1E2E"
+        )
+        self.token_usage_label.pack(side="right")
 
         # Área de Transcrição
         self.transcription_label = ctk.CTkLabel(
@@ -733,6 +756,34 @@ class CopilotUI(ctk.CTk):
             else:
                 self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#CBA6F7")
 
+    def update_token_usage(self, used: int, limit: int) -> None:
+        """
+        Atualiza o indicador visual de consumo de tokens por minuto (TPM).
+        Aplica cores semânticas: Verde (<60%), Amarelo (60-85%), Vermelho (>85%).
+        """
+        if not hasattr(self, "token_progressbar") or not self.token_progressbar.winfo_exists():
+            return
+
+        safe_limit = max(1, limit)
+        fraction = min(1.0, max(0.0, used / safe_limit))
+        pct = int(fraction * 100)
+
+        if fraction < 0.60:
+            color = "#A6E3A1"  # Verde (seguro)
+        elif fraction <= 0.85:
+            color = "#F9E2AF"  # Amarelo (atenção)
+        else:
+            color = "#F38BA8"  # Vermelho (crítico / perto do fallback)
+
+        self.token_progressbar.configure(progress_color=color)
+        self.token_progressbar.set(fraction)
+
+        if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
+            self.token_usage_label.config(
+                text=f"⚡ TPM: {used:,} / {safe_limit:,} ({pct}%)".replace(",", "."),
+                fg=color if fraction >= 0.60 else "#A6ADC8"
+            )
+
     def update_transcription(self, text: str, is_final: bool = False) -> None:
         """Atualiza a caixa de transcrição."""
         self.transcription_textbox.delete("1.0", "end")
@@ -820,6 +871,8 @@ class CopilotUI(ctk.CTk):
 
         self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
         self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
+        if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
+            self.token_usage_label.configure(bg=prof["main_bg"])
         if hasattr(self, "resize_grip") and self.resize_grip.winfo_exists():
             self.resize_grip.configure(bg=prof["main_bg"])
 
