@@ -596,7 +596,7 @@ class SettingsWindow(ctk.CTkToplevel):
 
         lbl_desc = ctk.CTkLabel(
             tab,
-            text="Perguntas Rápidas de Entrevista (Uma por linha):",
+            text="Perguntas Rápidas de Entrevista (Formato: Nome do Botão | Pergunta, uma por linha):",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#A6ADC8"
         )
@@ -657,3 +657,5 @@ class SettingsWindow(ctk.CTkToplevel):
             self.on_quick_questions_change(lines)
 
         logger.info(f"{len(lines)} perguntas rápidas salvas com sucesso.")
+        self.save_quick_btn.configure(text="✔ Salvo com Sucesso!")
+        self.after(2000, lambda: self.save_quick_btn.configure(text="💾 Salvar Perguntas"))

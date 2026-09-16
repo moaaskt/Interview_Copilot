@@ -32,6 +32,7 @@ class CopilotUI(ctk.CTk):
         on_quick_question: Optional[Callable[[str], None]] = None,
         on_device_change: Optional[Callable[[Optional[int], str], None]] = None,
         on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
+        on_hotkeys_change: Optional[Callable[[dict], None]] = None,
     ) -> None:
         super().__init__()
 
@@ -47,15 +48,18 @@ class CopilotUI(ctk.CTk):
         self.on_respond_now = on_respond_now
         self.on_clear = on_clear
         self.config_manager = config_manager or ConfigManager()
+        self._current_hotkeys = dict(self.config_manager.hotkeys) if hasattr(self.config_manager, "hotkeys") else {}
         self.on_quick_question = on_quick_question
         self.on_device_change = on_device_change
         self.on_llm_change = on_llm_change
+        self.on_hotkeys_change = on_hotkeys_change
 
         self.settings_window: Optional[SettingsWindow] = None
 
         self._offset_x = 0
         self._offset_y = 0
         self._is_recording = False
+        self._registered_hotkeys: list[str] = []
 
         # Perfis de Visibilidade / Opacidade Dinâmica (Alto contraste garantido)
         self._opacity_profiles = [
@@ -219,7 +223,7 @@ class CopilotUI(ctk.CTk):
 
         self.record_btn = ctk.CTkButton(
             self.controls_frame,
-            text="🎙 Gravar [Ctrl+Espaço]",
+            text="🎙 Gravar",
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color="#A6E3A1",
             text_color="#11111B",
@@ -231,7 +235,7 @@ class CopilotUI(ctk.CTk):
 
         self.respond_btn = ctk.CTkButton(
             self.controls_frame,
-            text="⚡ Responder [Ctrl+Enter]",
+            text="⚡ Responder",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#89B4FA",
             text_color="#11111B",
@@ -243,7 +247,7 @@ class CopilotUI(ctk.CTk):
 
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
-            text="🗑 Limpar [Esc]",
+            text="🗑 Limpar",
             font=ctk.CTkFont(size=11),
             fg_color="#313244",
             text_color="#CDD6F4",
@@ -298,8 +302,39 @@ class CopilotUI(ctk.CTk):
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
 
-        # Registra atalhos de teclado
+        # Registra atalhos de teclado e atualiza legendas dos botões com os atalhos atuais
         self._bind_hotkeys()
+        self.update_button_labels()
+
+    def _parse_quick_prompt_entry(self, entry: str) -> tuple[str, str]:
+        """
+        Extrai (rótulo_do_botão, pergunta_completa) de uma entrada rápida.
+        Suporta o formato 'Nome do Botão | Pergunta' ou texto simples de pergunta.
+        """
+        if not entry or not entry.strip():
+            return ("", "")
+
+        if "|" in entry:
+            parts = entry.split("|", 1)
+            label = parts[0].strip()
+            prompt = parts[1].strip()
+            return (label or prompt[:12], prompt or label)
+
+        # Fallback para entradas sem delimitador '|'
+        lower = entry.lower()
+        if "sobre você" in lower or "trajetória" in lower:
+            label = "Sobre Mim"
+        elif "arquitetura" in lower or "projeto" in lower:
+            label = "Arquitetura"
+        elif "bug" in lower or "investigação" in lower:
+            label = "Bugs"
+        elif "banco" in lower or "sql" in lower:
+            label = "Bancos"
+        elif "desafio" in lower:
+            label = "Desafio"
+        else:
+            label = entry[:12] + ".." if len(entry) > 12 else entry
+        return (label, entry.strip())
 
     def _build_quick_prompt_buttons(self) -> None:
         """Renderiza botões de atalho rápido para perguntas frequentes de entrevistas técnicas."""
@@ -316,23 +351,11 @@ class CopilotUI(ctk.CTk):
         lbl.pack(side="left", padx=(0, 6))
 
         questions = self.config_manager.quick_questions
-        # Mapeamento para rótulos amigáveis e curtos
-        def get_short_label(q: str) -> str:
-            lower = q.lower()
-            if "sobre você" in lower or "trajetória" in lower:
-                return "Sobre Mim"
-            if "arquitetura" in lower or "projeto" in lower:
-                return "Arquitetura"
-            if "bug" in lower or "investigação" in lower:
-                return "Bugs"
-            if "banco" in lower or "sql" in lower:
-                return "Bancos"
-            if "desafio" in lower:
-                return "Desafio"
-            return q[:12] + ".."
-
         for q in questions[:5]:
-            label_text = get_short_label(q)
+            label_text, prompt_text = self._parse_quick_prompt_entry(q)
+            if not label_text or not prompt_text:
+                continue
+
             btn = ctk.CTkButton(
                 self.quick_prompts_frame,
                 text=label_text,
@@ -341,8 +364,8 @@ class CopilotUI(ctk.CTk):
                 text_color="#CDD6F4",
                 hover_color="#313244",
                 height=22,
-                width=68,
-                command=lambda question=q: self._handle_quick_prompt(question)
+                width=max(68, len(label_text) * 7 + 16),
+                command=lambda question=prompt_text: self._handle_quick_prompt(question)
             )
             btn.pack(side="left", padx=2)
 
@@ -381,56 +404,129 @@ class CopilotUI(ctk.CTk):
         """Atualiza a barra de botões quando as perguntas forem salvas nas configurações."""
         self._build_quick_prompt_buttons()
 
+    def _format_hotkey_for_button(self, key_str: str) -> str:
+        """Converte sintaxe de bind do Tkinter ou combo legível para formato de botão (ex: <Control-space> -> Ctrl+Espaço)."""
+        if not key_str:
+            return ""
+        s = key_str.strip().replace("<", "").replace(">", "")
+        parts = s.replace("+", "-").split("-")
+        res = []
+        for p in parts:
+            p_clean = p.strip()
+            if not p_clean:
+                continue
+            lower = p_clean.lower()
+            if lower in ("control", "ctrl"):
+                res.append("Ctrl")
+            elif lower == "alt":
+                res.append("Alt")
+            elif lower == "shift":
+                res.append("Shift")
+            elif lower == "space":
+                res.append("Espaço")
+            elif lower in ("return", "enter"):
+                res.append("Enter")
+            elif lower in ("escape", "esc"):
+                res.append("Esc")
+            elif lower == "backspace":
+                res.append("Backspace")
+            elif lower == "tab":
+                res.append("Tab")
+            elif lower.startswith("f") and lower[1:].isdigit():
+                res.append(lower.upper())
+            elif len(p_clean) == 1:
+                res.append(p_clean.upper())
+            else:
+                res.append(p_clean.capitalize())
+        return "+".join(res)
+
+    def update_button_labels(self, hotkeys_dict: Optional[dict] = None) -> None:
+        """Atualiza as legendas dos botões com base nas configurações ativas de atalhos."""
+        if hotkeys_dict is not None:
+            self._current_hotkeys = dict(hotkeys_dict)
+        hotkeys = self._current_hotkeys
+        k_rec = self._format_hotkey_for_button(hotkeys.get("toggle_recording", "<Control-space>"))
+        k_resp = self._format_hotkey_for_button(hotkeys.get("respond_now", "<Control-Return>"))
+        k_clear = self._format_hotkey_for_button(hotkeys.get("clear_session", "<Escape>"))
+
+        rec_label = f" [{k_rec}]" if k_rec else ""
+        resp_label = f" [{k_resp}]" if k_resp else ""
+        clear_label = f" [{k_clear}]" if k_clear else ""
+
+        if not self._is_recording:
+            self.record_btn.configure(text=f"🎙 Gravar{rec_label}")
+        else:
+            self.record_btn.configure(text=f"⏹ Parar{rec_label}")
+
+        self.respond_btn.configure(text=f"⚡ Responder{resp_label}")
+        self.clear_btn.configure(text=f"🗑 Limpar{clear_label}")
+
     def _bind_hotkeys(self) -> None:
         """Registra os atalhos de teclado globais da janela."""
-        hotkeys = self.config_manager.hotkeys
+        for seq in self._registered_hotkeys:
+            try:
+                self.unbind_all(seq)
+            except Exception:
+                pass
+        self._registered_hotkeys.clear()
+
+        hotkeys = self._current_hotkeys
 
         # Gravar / Parar
         k_rec = hotkeys.get("toggle_recording", "<Control-space>")
         k_rec_alt = hotkeys.get("toggle_recording_alt", "<F9>")
-        self.bind_all(k_rec, self._handle_toggle_recording)
-        self.bind_all(k_rec_alt, self._handle_toggle_recording)
+        if k_rec:
+            self.bind_all(k_rec, self._handle_toggle_recording)
+            self._registered_hotkeys.append(k_rec)
+        if k_rec_alt:
+            self.bind_all(k_rec_alt, self._handle_toggle_recording)
+            self._registered_hotkeys.append(k_rec_alt)
 
         # Responder Agora
         k_resp = hotkeys.get("respond_now", "<Control-Return>")
-        self.bind_all(k_resp, self._handle_respond_now)
+        if k_resp:
+            self.bind_all(k_resp, self._handle_respond_now)
+            self._registered_hotkeys.append(k_resp)
 
         # Limpar Sessão
         k_clear = hotkeys.get("clear_session", "<Escape>")
         k_clear_alt = hotkeys.get("clear_session_alt", "<Control-BackSpace>")
-        self.bind_all(k_clear, self._handle_clear)
-        self.bind_all(k_clear_alt, self._handle_clear)
+        if k_clear:
+            self.bind_all(k_clear, self._handle_clear)
+            self._registered_hotkeys.append(k_clear)
+        if k_clear_alt:
+            self.bind_all(k_clear_alt, self._handle_clear)
+            self._registered_hotkeys.append(k_clear_alt)
 
         # Presets e Opacidade
         k_pos = hotkeys.get("cycle_position", "<F8>")
         k_op = hotkeys.get("cycle_opacity", "<F10>")
-        self.bind_all(k_pos, self.cycle_window_position)
-        self.bind_all(k_op, self.cycle_opacity)
+        if k_pos:
+            self.bind_all(k_pos, self.cycle_window_position)
+            self._registered_hotkeys.append(k_pos)
+        if k_op:
+            self.bind_all(k_op, self.cycle_opacity)
+            self._registered_hotkeys.append(k_op)
 
         # Abrir Configurações
         k_sett = hotkeys.get("open_settings", "<F12>")
-        self.bind_all(k_sett, self.open_settings)
+        if k_sett:
+            self.bind_all(k_sett, self.open_settings)
+            self._registered_hotkeys.append(k_sett)
 
     def apply_hotkeys(self, hotkeys_dict: dict) -> None:
         """Aplica novo mapeamento de teclas."""
+        self._current_hotkeys = dict(hotkeys_dict)
+        if hasattr(self.config_manager, "set"):
+            try:
+                self.config_manager.set("hotkeys", None, hotkeys_dict)
+            except Exception:
+                pass
         self._bind_hotkeys()
-        def _fmt(key_str: str) -> str:
-            s = key_str.replace("<", "").replace(">", "")
-            s = s.replace("Control", "Ctrl").replace("Return", "Enter").replace("Escape", "Esc").replace("space", "Espaço")
-            s = s.replace("-", "+")
-            return s
+        self.update_button_labels(hotkeys_dict)
 
-        k_rec = _fmt(hotkeys_dict.get("toggle_recording", "Ctrl+Espaço"))
-        k_resp = _fmt(hotkeys_dict.get("respond_now", "Ctrl+Enter"))
-        k_clear = _fmt(hotkeys_dict.get("clear_session", "Esc"))
-
-        if not self._is_recording:
-            self.record_btn.configure(text=f"🎙 Gravar [{k_rec}]")
-        else:
-            self.record_btn.configure(text=f"⏹ Parar [{k_rec}]")
-
-        self.respond_btn.configure(text=f"⚡ Responder [{k_resp}]")
-        self.clear_btn.configure(text=f"🗑 Limpar [{k_clear}]")
+        if self.on_hotkeys_change:
+            self.on_hotkeys_change(hotkeys_dict)
 
     def _bind_drag_events(self, widget) -> None:
         """Vincula eventos de arrastar diretamente ao widget."""
@@ -503,9 +599,11 @@ class CopilotUI(ctk.CTk):
     def set_recording_state(self, is_recording: bool) -> None:
         """Atualiza visualmente o botão e badge de status de gravação."""
         self._is_recording = is_recording
+        k_rec = self._format_hotkey_for_button(self._current_hotkeys.get("toggle_recording", "<Control-space>"))
+        rec_label = f" [{k_rec}]" if k_rec else ""
         if is_recording:
             self.record_btn.configure(
-                text="⏹ Parar [Ctrl+Espaço]",
+                text=f"⏹ Parar{rec_label}",
                 fg_color="#F38BA8",
                 text_color="#11111B",
                 hover_color="#EBA0AC"
@@ -516,7 +614,7 @@ class CopilotUI(ctk.CTk):
             )
         else:
             self.record_btn.configure(
-                text="🎙 Gravar [Ctrl+Espaço]",
+                text=f"🎙 Gravar{rec_label}",
                 fg_color="#A6E3A1",
                 text_color="#11111B",
                 hover_color="#94E2D5"

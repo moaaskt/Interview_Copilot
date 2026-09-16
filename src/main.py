@@ -14,6 +14,7 @@ from transcriber import Transcriber
 from llm_service import LLMService
 from ui import CopilotUI
 from config_manager import ConfigManager
+from hotkey_manager import HotkeyManager
 
 # Configuração de Logging
 logging.basicConfig(
@@ -52,6 +53,7 @@ class CopilotApp:
             on_quick_question=self.on_quick_question,
             on_device_change=self.on_device_change,
             on_llm_change=self.on_llm_change,
+            on_hotkeys_change=self.on_hotkeys_change,
         )
         self.llm_service = LLMService(
             api_key=self.groq_key,
@@ -68,6 +70,22 @@ class CopilotApp:
             audio_callback=self.on_audio_data,
             device_index=self.config_manager.audio_device_index,
             device_name=self.config_manager.audio_device_name,
+        )
+
+        # Gerenciador de Atalhos Globais do Sistema Operacional (pynput)
+        hotkey_callbacks = {
+            "toggle_recording": self.toggle_recording,
+            "toggle_recording_alt": self.toggle_recording,
+            "respond_now": self.respond_now,
+            "clear_session": self.clear_session,
+            "clear_session_alt": self.clear_session,
+            "cycle_position": self.ui.cycle_window_position,
+            "cycle_opacity": self.ui.cycle_opacity,
+            "open_settings": self.ui.open_settings,
+        }
+        self.hotkey_manager = HotkeyManager(
+            callbacks=hotkey_callbacks,
+            hotkeys=self.config_manager.hotkeys,
         )
 
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -100,6 +118,11 @@ class CopilotApp:
         self.llm_service.set_response_style(style)
         self.llm_service.set_system_prompt(custom_persona)
         self.ui.set_status(f"● IA: {style.capitalize()}", "#89B4FA")
+
+    def on_hotkeys_change(self, new_hotkeys: dict) -> None:
+        """Callback chamada quando o usuário altera os atalhos na tela de configurações."""
+        logger.info(f"Atualizando atalhos globais no HotkeyManager: {new_hotkeys}")
+        self.hotkey_manager.update_hotkeys(new_hotkeys)
 
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""
@@ -239,6 +262,10 @@ class CopilotApp:
         # Inicia a captura de áudio loopback
         self.audio_capture.start(self.loop)
 
+        # Inicia a escuta de atalhos globais do sistema operacional
+        self.hotkey_manager.set_loop(self.loop)
+        self.hotkey_manager.start()
+
         logger.info("Interview Copilot executando. Pressione fechar no overlay para sair.")
 
         # Event Loop unificado Asyncio + CustomTkinter
@@ -256,6 +283,7 @@ class CopilotApp:
     async def shutdown(self) -> None:
         """Finalização limpa e liberação de recursos."""
         logger.info("Encerrando aplicação...")
+        self.hotkey_manager.stop()
         self.audio_capture.stop()
         await self.transcriber.close()
         if self.current_llm_task and not self.current_llm_task.done():

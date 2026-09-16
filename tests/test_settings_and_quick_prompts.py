@@ -178,6 +178,11 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         app.llm_service.set_response_style.assert_called_with("tecnica")
         app.llm_service.set_system_prompt.assert_called_with("Nova Persona")
 
+        # Alteração de Atalhos Globais
+        app.hotkey_manager = MagicMock()
+        app.on_hotkeys_change({"toggle_recording": "<Control-g>"})
+        app.hotkey_manager.update_hotkeys.assert_called_with({"toggle_recording": "<Control-g>"})
+
     def test_key_capture_parsing_and_formatting(self):
         try:
             from settings_window import format_tk_to_user, parse_key_event
@@ -206,6 +211,97 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         tk_bind_f, user_repr_f = parse_key_event(MockEvent("F11", 0))
         self.assertEqual(tk_bind_f, "<F11>")
         self.assertEqual(user_repr_f, "F11")
+
+    def test_hotkey_manager_global_conversion_and_dispatch(self):
+        try:
+            from hotkey_manager import HotkeyManager, to_pynput_hotkey
+        except ImportError:
+            from src.hotkey_manager import HotkeyManager, to_pynput_hotkey
+
+        self.assertEqual(to_pynput_hotkey("<Control-space>"), "<ctrl>+<space>")
+        self.assertEqual(to_pynput_hotkey("<Control-Return>"), "<ctrl>+<enter>")
+        self.assertEqual(to_pynput_hotkey("<Escape>"), "<esc>")
+        self.assertEqual(to_pynput_hotkey("<F12>"), "<f12>")
+        self.assertEqual(to_pynput_hotkey("<Control-Shift-r>"), "<ctrl>+<shift>+r")
+
+        called = []
+        callbacks = {"toggle_recording": lambda: called.append("toggled")}
+        mgr = HotkeyManager(callbacks=callbacks, hotkeys={"toggle_recording": "<Control-space>"})
+        mgr._dispatch_callback("toggle_recording")
+        self.assertEqual(called, ["toggled"])
+
+    def test_quick_prompt_entry_parsing(self):
+        ui = CopilotUI(config_manager=self.config_manager)
+        try:
+            # Formato customizado Nome | Pergunta
+            lbl, prompt = ui._parse_quick_prompt_entry("Experiência Go | Conte sobre seus projetos e experiência em Go")
+            self.assertEqual(lbl, "Experiência Go")
+            self.assertEqual(prompt, "Conte sobre seus projetos e experiência em Go")
+
+            # Fallback sem pipe
+            lbl_legacy, prompt_legacy = ui._parse_quick_prompt_entry("Fale mais sobre você e sua trajetória")
+            self.assertEqual(lbl_legacy, "Sobre Mim")
+            self.assertEqual(prompt_legacy, "Fale mais sobre você e sua trajetória")
+        finally:
+            ui.destroy()
+
+    def test_llm_service_prompt_budget_fitting(self):
+        from src.llm_service import LLMService
+        service = LLMService(api_key="mock", custom_persona="A" * 30000)
+        fitted = service._fit_prompt_to_budget(service.get_effective_system_prompt(), max_chars=18000)
+        self.assertLessEqual(len(fitted), 18000)
+
+
+    def test_quick_questions_save_and_reload_persistence(self):
+        ui = CopilotUI(config_manager=self.config_manager)
+        ui.update()
+
+        try:
+            ui.open_settings()
+            ui.update()
+            sw = ui.settings_window
+            self.assertIsNotNone(sw)
+
+            custom_lines = [
+                "Meu Perfil | Fale sobre você e sua trajetória",
+                "NodeJS | Explique como funciona o Event Loop no Node.js",
+            ]
+            sw.quick_textbox.delete("1.0", "end")
+            sw.quick_textbox.insert("1.0", "\n".join(custom_lines))
+
+            # Dispara salvamento
+            sw._save_quick_questions()
+            ui.update()
+
+            # 1. Verifica persistência no ConfigManager em memória
+            self.assertEqual(self.config_manager.quick_questions, custom_lines)
+
+            # 2. Verifica persistência no arquivo em disco
+            reloaded = ConfigManager(config_path=self.temp_file.name)
+            self.assertEqual(reloaded.quick_questions, custom_lines)
+
+            # 3. Verifica se os botões do HUD foram atualizados dinamicamente
+            hud_buttons = [
+                w for w in ui.quick_prompts_frame.winfo_children()
+                if isinstance(w, type(sw.save_quick_btn))
+            ]
+            button_texts = [b.cget("text") for b in hud_buttons]
+            self.assertIn("Meu Perfil", button_texts)
+            self.assertIn("NodeJS", button_texts)
+
+            # 4. Fecha e reabre SettingsWindow para garantir que o texto carregado é o salvo
+            sw.destroy()
+            ui.update()
+
+            ui.open_settings()
+            ui.update()
+            sw2 = ui.settings_window
+            loaded_text = sw2.quick_textbox.get("1.0", "end").strip()
+            self.assertEqual(loaded_text, "\n".join(custom_lines))
+            sw2.destroy()
+            ui.update()
+        finally:
+            ui.destroy()
 
 
 if __name__ == "__main__":
