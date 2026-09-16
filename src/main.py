@@ -62,6 +62,8 @@ class CopilotApp:
             response_style=self.config_manager.response_style,
             custom_persona=self.config_manager.custom_persona,
             on_provider_change=self.on_provider_change,
+            on_status_notice=self.on_status_notice,
+            on_token_usage_change=self.on_token_usage_change,
         )
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
@@ -93,6 +95,7 @@ class CopilotApp:
 
         self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
+        self.decay_task: asyncio.Task | None = None
 
         # Estado da gravação e buffer de transcrição consolidada
         self.is_recording = False
@@ -133,6 +136,35 @@ class CopilotApp:
             self.loop.call_soon_threadsafe(self.ui.set_ai_provider, provider_name)
         else:
             self.ui.set_ai_provider(provider_name)
+
+    def on_status_notice(self, message: str, color: str = "#F9E2AF") -> None:
+        """Callback chamada quando um aviso transitório de sistema deve ser exibido no HUD."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.set_status, message, color)
+        else:
+            self.ui.set_status(message, color)
+
+    def on_token_usage_change(self, used: int, limit: int) -> None:
+        """Callback chamada quando a contagem de tokens por minuto (TPM) é atualizada."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.update_token_usage, used, limit)
+        else:
+            self.ui.update_token_usage(used, limit)
+
+    async def _decay_tokens_loop(self) -> None:
+        """Loop em background para decaimento suave em tempo real do uso de TPM a cada 1 segundo."""
+        while True:
+            try:
+                await asyncio.sleep(1.0)
+                if hasattr(self, "llm_service") and hasattr(self.llm_service, "token_tracker"):
+                    tracker = self.llm_service.token_tracker
+                    current_tpm = tracker.get_current_tpm()
+                    if self.loop and self.loop.is_running():
+                        self.loop.call_soon_threadsafe(self.ui.update_token_usage, current_tpm, tracker.limit)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"[CopilotApp] Erro no loop de decaimento de TPM: {e}")
 
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""
@@ -276,6 +308,9 @@ class CopilotApp:
         self.hotkey_manager.set_loop(self.loop)
         self.hotkey_manager.start()
 
+        # Inicia o loop em background de decaimento em tempo real de TPM
+        self.decay_task = self.loop.create_task(self._decay_tokens_loop())
+
         logger.info("Interview Copilot executando. Pressione fechar no overlay para sair.")
 
         # Event Loop unificado Asyncio + CustomTkinter
@@ -293,6 +328,8 @@ class CopilotApp:
     async def shutdown(self) -> None:
         """Finalização limpa e liberação de recursos."""
         logger.info("Encerrando aplicação...")
+        if self.decay_task and not self.decay_task.done():
+            self.decay_task.cancel()
         self.hotkey_manager.stop()
         self.audio_capture.stop()
         await self.transcriber.close()

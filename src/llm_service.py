@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import AsyncGenerator, Optional, Callable
 from openai import AsyncOpenAI
 import google.generativeai as genai
@@ -64,6 +65,63 @@ RESPONSE_STYLES = {
     ),
 }
 
+# Tabela de limites de Tokens Por Minuto (TPM) da Groq por família de modelos
+DEFAULT_MODEL_TPM_LIMITS = {
+    "qwen/qwen3.8-27b": 7000,
+    "llama-3.3-70b-versatile": 6000,
+    "llama3-8b-8192": 30000,
+    "mixtral-8x7b-32768": 5000,
+}
+DEFAULT_FALLBACK_TPM = 7000
+
+
+class TokenTracker:
+    """
+    Rastreia o consumo de tokens em uma janela deslizante de 60 segundos.
+    Permite expurgo automático de requisições expiradas e avaliação preventiva de rate limits.
+    """
+
+    def __init__(self, limit: int, window_seconds: float = 60.0) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        # Histórico de tuplas: (timestamp, token_count)
+        self._history: list[tuple[float, int]] = []
+
+    def _purge_expired(self, now: Optional[float] = None) -> None:
+        """Remove registros com mais de window_seconds da janela deslizante."""
+        current_time = now if now is not None else time.time()
+        cutoff = current_time - self.window_seconds
+        self._history = [entry for entry in self._history if entry[0] > cutoff]
+
+    def get_current_tpm(self, now: Optional[float] = None) -> int:
+        """Retorna o total de tokens ativos na janela deslizante dos últimos 60 segundos."""
+        self._purge_expired(now)
+        return sum(tokens for _, tokens in self._history)
+
+    def record_usage(self, token_count: int, timestamp: Optional[float] = None) -> None:
+        """Registra tokens consumidos na janela ativa."""
+        ts = timestamp if timestamp is not None else time.time()
+        self._history.append((ts, int(token_count)))
+        self._purge_expired(ts)
+
+    def should_fallback_proactively(self, estimated_tokens: int, threshold: float = 0.90) -> bool:
+        """
+        Retorna True se o consumo atual somado à estimativa da próxima requisição
+        atingir ou ultrapassar o limiar de segurança (ex: 90% da cota de TPM).
+        """
+        current = self.get_current_tpm()
+        return (current + estimated_tokens) >= (self.limit * threshold)
+
+    @staticmethod
+    def estimate_tokens(text: str) -> int:
+        """
+        Estima a quantidade de tokens para texto em português/código técnico.
+        Usa ~3.2 caracteres por token para evitar subestimação devido à acentuação e morfologia do PT-BR.
+        """
+        if not text:
+            return 0
+        return max(1, int(len(text) / 3.2))
+
 
 class LLMService:
     """
@@ -79,6 +137,9 @@ class LLMService:
         custom_persona: Optional[str] = None,
         gemini_api_key: Optional[str] = None,
         on_provider_change: Optional[Callable[[str], None]] = None,
+        on_token_usage_change: Optional[Callable[[int, int], None]] = None,
+        on_status_notice: Optional[Callable[[str, str], None]] = None,
+        tpm_limit: Optional[int] = None,
     ) -> None:
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -88,7 +149,21 @@ class LLMService:
         self.response_style = response_style if response_style in RESPONSE_STYLES else "direta"
         self.persona = custom_persona or DEFAULT_PERSONA
         self.on_provider_change = on_provider_change
+        self.on_token_usage_change = on_token_usage_change
+        self.on_status_notice = on_status_notice
         
+        # Resolução do limite de TPM por modelo ou env var
+        resolved_tpm_limit = tpm_limit
+        if resolved_tpm_limit is None:
+            env_tpm = os.getenv("GROQ_TPM_LIMIT")
+            if env_tpm and env_tpm.isdigit():
+                resolved_tpm_limit = int(env_tpm)
+            else:
+                resolved_tpm_limit = DEFAULT_MODEL_TPM_LIMITS.get(self.model, DEFAULT_FALLBACK_TPM)
+
+        self.token_tracker = TokenTracker(limit=resolved_tpm_limit)
+        logger.info(f"LLMService inicializado. Modelo: '{self.model}', Limite TPM: {resolved_tpm_limit}")
+
         self.gemini_api_key = gemini_api_key
         if self.gemini_api_key:
             genai.configure(api_key=self.gemini_api_key)
@@ -146,15 +221,36 @@ class LLMService:
     async def stream_response(self, user_question: str) -> AsyncGenerator[str, None]:
         """
         Envia a transcrição da pergunta para a API da Groq com stream=True
-        e gera tokens em tempo real. Implementa fallback automático para Gemini.
+        e gera tokens em tempo real. Implementa fallback proativo e reativo para Gemini.
         """
-        if self.on_provider_change:
-            self.on_provider_change("Groq")
         effective_prompt = self.get_effective_system_prompt()
         if "qwen" in self.model.lower():
             effective_prompt = self._fit_prompt_to_budget(effective_prompt, max_chars=18000)
 
         max_tokens = 450 if self.response_style == "tecnica" else (350 if self.response_style == "star" else 250)
+
+        # 1. Checagem Preventiva / Proativa de Rate Limit (TPM)
+        estimated_req_tokens = TokenTracker.estimate_tokens(effective_prompt + "\n" + user_question) + (max_tokens // 2)
+        if self.gemini_api_key and self.token_tracker.should_fallback_proactively(estimated_req_tokens, threshold=0.90):
+            current_tpm = self.token_tracker.get_current_tpm()
+            logger.warning(
+                f"[LLMService] FALLBACK PROATIVO ACIONADO: TPM atual ({current_tpm}) + Estimativa ({estimated_req_tokens}) "
+                f">= 90% do limite da Groq ({self.token_tracker.limit}). Desviando preventivamente para Gemini."
+            )
+            if self.on_status_notice:
+                self.on_status_notice("⚠ Trocando para Gemini (limite TPM)...", "#F9E2AF")
+            if self.on_provider_change:
+                self.on_provider_change("Gemini")
+
+            async for token in self._stream_gemini_fallback(user_question, effective_prompt, max_tokens):
+                yield token
+            return
+
+        if self.on_provider_change:
+            self.on_provider_change("Groq")
+
+        tokens_generated_count = 0
+        prompt_tokens_est = TokenTracker.estimate_tokens(effective_prompt + "\n" + user_question)
 
         try:
             logger.info(f"Gerando resposta LLM ({self.model} - estilo '{self.response_style}') para: {user_question}")
@@ -172,7 +268,14 @@ class LLMService:
             async for chunk in stream:
                 token = chunk.choices[0].delta.content or ""
                 if token:
+                    tokens_generated_count += TokenTracker.estimate_tokens(token)
                     yield token
+
+            # Registra uso de tokens da Groq na janela deslizante
+            total_req_tokens = prompt_tokens_est + tokens_generated_count
+            self.token_tracker.record_usage(total_req_tokens)
+            if self.on_token_usage_change:
+                self.on_token_usage_change(self.token_tracker.get_current_tpm(), self.token_tracker.limit)
 
         except Exception as e:
             err_msg = str(e)
@@ -190,10 +293,15 @@ class LLMService:
                         max_tokens=max_tokens,
                         stream=True,
                     )
+                    retry_tokens_count = 0
                     async for chunk in stream:
                         token = chunk.choices[0].delta.content or ""
                         if token:
+                            retry_tokens_count += TokenTracker.estimate_tokens(token)
                             yield token
+                    self.token_tracker.record_usage(TokenTracker.estimate_tokens(fallback_prompt + "\n" + user_question) + retry_tokens_count)
+                    if self.on_token_usage_change:
+                        self.on_token_usage_change(self.token_tracker.get_current_tpm(), self.token_tracker.limit)
                     return
                 except Exception as retry_err:
                     logger.error(f"[LLMService] Falha na recuperação de erro 413: {retry_err}")

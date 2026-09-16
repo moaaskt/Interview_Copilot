@@ -37,7 +37,8 @@ class CopilotUI(ctk.CTk):
         super().__init__()
 
         self.title(title)
-        self.geometry("520x390+100+100")
+        self.geometry("540x390+100+100")
+        self.minsize(440, 260)
 
         # Configurações de overlay
         self.overrideredirect(True)
@@ -65,7 +66,7 @@ class CopilotUI(ctk.CTk):
         self._opacity_profiles = [
             {
                 "alpha": 0.92,
-                "label": "👓 92% Padrão",
+                "label": "👓 92%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -75,7 +76,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 1.0,
-                "label": "👓 100% Foco",
+                "label": "👓 100%",
                 "main_bg": "#11111B",
                 "header_bg": "#08080C",
                 "textbox_bg": "#040406",
@@ -85,7 +86,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 0.75,
-                "label": "👓 75% Discreto",
+                "label": "👓 75%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -95,7 +96,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 0.85,
-                "label": "👓 85% Suave",
+                "label": "👓 85%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -116,6 +117,12 @@ class CopilotUI(ctk.CTk):
         self._drag_target_x: int = 0
         self._drag_target_y: int = 0
         self._drag_scheduled: bool = False
+
+        # Estado para redimensionamento manual livre via grip handle
+        self._resize_start_x: Optional[int] = None
+        self._resize_start_y: Optional[int] = None
+        self._resize_start_w: Optional[int] = None
+        self._resize_start_h: Optional[int] = None
 
         self._setup_ui()
         self._init_after_id = self.after(100, lambda: self._apply_opacity(self._opacity_profiles[self._current_opacity_idx]["alpha"]))
@@ -140,7 +147,7 @@ class CopilotUI(ctk.CTk):
             bg="#181825",
             cursor="fleur"
         )
-        self.title_label.pack(side="left", padx=10)
+        self.title_label.pack(side="left", padx=(6, 4))
 
         # Badge de Status
         self.status_badge = tk.Label(
@@ -151,7 +158,7 @@ class CopilotUI(ctk.CTk):
             bg="#181825",
             cursor="fleur"
         )
-        self.status_badge.pack(side="left", padx=(8, 4))
+        self.status_badge.pack(side="left", padx=4)
 
         # Badge do Provedor de IA
         self.provider_badge = tk.Label(
@@ -216,7 +223,7 @@ class CopilotUI(ctk.CTk):
             self.header_frame,
             text=self._opacity_profiles[self._current_opacity_idx]["label"],
             font=("Helvetica", 9),
-            width=88,
+            width=68,
             height=24,
             fg_color="transparent",
             hover_color="#313244",
@@ -271,8 +278,31 @@ class CopilotUI(ctk.CTk):
 
         # Barra de Perguntas Rápidas de Entrevista (Quick Prompts)
         self.quick_prompts_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.quick_prompts_frame.pack(fill="x", padx=12, pady=(2, 4))
+        self.quick_prompts_frame.pack(fill="x", padx=12, pady=(2, 2))
         self._build_quick_prompt_buttons()
+
+        # Barra de Consumo de Tokens (TPM Progress Bar)
+        self.token_usage_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.token_usage_frame.pack(fill="x", padx=12, pady=(2, 2))
+
+        self.token_progressbar = ctk.CTkProgressBar(
+            self.token_usage_frame,
+            height=5,
+            corner_radius=3,
+            fg_color="#313244",
+            progress_color="#A6E3A1"
+        )
+        self.token_progressbar.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.token_progressbar.set(0.0)
+
+        self.token_usage_label = tk.Label(
+            self.token_usage_frame,
+            text="⚡ TPM: 0 / 7000 (0%)",
+            font=("Helvetica", 8, "bold"),
+            fg="#A6ADC8",
+            bg="#1E1E2E"
+        )
+        self.token_usage_label.pack(side="right")
 
         # Área de Transcrição
         self.transcription_label = ctk.CTkLabel(
@@ -313,6 +343,20 @@ class CopilotUI(ctk.CTk):
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
 
+        # Grip Handle no canto inferior direito para redimensionamento livre do overlay
+        self.resize_grip = tk.Label(
+            self.main_frame,
+            text="⇲",
+            font=("Segoe UI Symbol", 10),
+            fg="#585B70",
+            bg="#1E1E2E",
+            cursor="size_nw_se"
+        )
+        self.resize_grip.place(relx=1.0, rely=1.0, anchor="se", x=-4, y=-4)
+        self.resize_grip.bind("<Button-1>", self._start_resize)
+        self.resize_grip.bind("<B1-Motion>", self._resize)
+        self.resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
+
         # Registra atalhos de teclado e atualiza legendas dos botões com os atalhos atuais
         self._bind_hotkeys()
         self.update_button_labels()
@@ -348,37 +392,66 @@ class CopilotUI(ctk.CTk):
         return (label, entry.strip())
 
     def _build_quick_prompt_buttons(self) -> None:
-        """Renderiza botões de atalho rápido para perguntas frequentes de entrevistas técnicas."""
+        """Renderiza botões de atalho rápido para todas as perguntas cadastradas, com quebra de linha (wrap) dinâmica."""
         # Limpa widgets anteriores
         for widget in self.quick_prompts_frame.winfo_children():
             widget.destroy()
 
+        questions = self.config_manager.quick_questions
+        if not questions:
+            return
+
+        # Calcula a largura disponível no container para o wrap
+        try:
+            self.update_idletasks()
+            container_w = self.quick_prompts_frame.winfo_width()
+        except Exception:
+            container_w = 0
+
+        if container_w <= 60:
+            container_w = max(420, self.winfo_width() - 24)
+
+        # Cria primeira linha
+        row_frame = ctk.CTkFrame(self.quick_prompts_frame, fg_color="transparent")
+        row_frame.pack(fill="x", pady=1)
+
         lbl = ctk.CTkLabel(
-            self.quick_prompts_frame,
+            row_frame,
             text="⚡ Rápidas:",
             font=ctk.CTkFont(size=10, weight="bold"),
             text_color="#89B4FA"
         )
         lbl.pack(side="left", padx=(0, 6))
 
-        questions = self.config_manager.quick_questions
-        for q in questions[:5]:
+        current_w = 72
+        current_row = row_frame
+
+        # Itera por TODAS as perguntas salvas, sem limite fixo
+        for q in questions:
             label_text, prompt_text = self._parse_quick_prompt_entry(q)
             if not label_text or not prompt_text:
                 continue
 
+            btn_w = max(58, len(label_text) * 7 + 14)
+            # Se o botão ultrapassar a largura disponível da linha atual, cria uma nova linha (wrap)
+            if current_w + btn_w + 4 > container_w and current_w > 80:
+                current_row = ctk.CTkFrame(self.quick_prompts_frame, fg_color="transparent")
+                current_row.pack(fill="x", pady=1)
+                current_w = 0
+
             btn = ctk.CTkButton(
-                self.quick_prompts_frame,
+                current_row,
                 text=label_text,
                 font=ctk.CTkFont(size=10),
                 fg_color="#181825",
                 text_color="#CDD6F4",
                 hover_color="#313244",
                 height=22,
-                width=max(68, len(label_text) * 7 + 16),
+                width=btn_w,
                 command=lambda question=prompt_text: self._handle_quick_prompt(question)
             )
             btn.pack(side="left", padx=2)
+            current_w += btn_w + 4
 
     def _handle_quick_prompt(self, question: str) -> Optional[str]:
         """Dispara pergunta rápida pré-selecionada."""
@@ -581,6 +654,39 @@ class CopilotUI(ctk.CTk):
         self._drag_scheduled = False
         return "break"
 
+    def _start_resize(self, event) -> Optional[str]:
+        """Salva a posição e o tamanho iniciais ao iniciar o redimensionamento manual."""
+        self._resize_start_x = event.x_root
+        self._resize_start_y = event.y_root
+        self._resize_start_w = self.winfo_width()
+        self._resize_start_h = self.winfo_height()
+        return "break"
+
+    def _resize(self, event) -> Optional[str]:
+        """Calcula e aplica novas dimensões respeitando limites mínimos ergonômicos."""
+        if getattr(self, "_resize_start_x", None) is None or getattr(self, "_resize_start_y", None) is None:
+            return "break"
+
+        dw = event.x_root - self._resize_start_x
+        dh = event.y_root - self._resize_start_y
+
+        new_w = max(440, self._resize_start_w + dw)
+        new_h = max(260, self._resize_start_h + dh)
+
+        self.geometry(f"{new_w}x{new_h}")
+        return "break"
+
+    def _stop_resize(self, event=None) -> Optional[str]:
+        """Finaliza o redimensionamento, limpa o estado e re-renderiza o wrap de perguntas rápidas."""
+        old_w = getattr(self, "_resize_start_w", None)
+        self._resize_start_x = None
+        self._resize_start_y = None
+        self._resize_start_w = None
+        self._resize_start_h = None
+        if old_w and abs(self.winfo_width() - old_w) > 15:
+            self.after_idle(self._build_quick_prompt_buttons)
+        return "break"
+
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
         if self.on_toggle_recording:
             self.on_toggle_recording()
@@ -649,6 +755,34 @@ class CopilotUI(ctk.CTk):
                 self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#F9E2AF") # Amarelo Gemini
             else:
                 self.provider_badge.config(text=f"🤖 IA: {provider_name}", fg="#CBA6F7")
+
+    def update_token_usage(self, used: int, limit: int) -> None:
+        """
+        Atualiza o indicador visual de consumo de tokens por minuto (TPM).
+        Aplica cores semânticas: Verde (<60%), Amarelo (60-85%), Vermelho (>85%).
+        """
+        if not hasattr(self, "token_progressbar") or not self.token_progressbar.winfo_exists():
+            return
+
+        safe_limit = max(1, limit)
+        fraction = min(1.0, max(0.0, used / safe_limit))
+        pct = int(fraction * 100)
+
+        if fraction < 0.60:
+            color = "#A6E3A1"  # Verde (seguro)
+        elif fraction <= 0.85:
+            color = "#F9E2AF"  # Amarelo (atenção)
+        else:
+            color = "#F38BA8"  # Vermelho (crítico / perto do fallback)
+
+        self.token_progressbar.configure(progress_color=color)
+        self.token_progressbar.set(fraction)
+
+        if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
+            self.token_usage_label.config(
+                text=f"⚡ TPM: {used:,} / {safe_limit:,} ({pct}%)".replace(",", "."),
+                fg=color if fraction >= 0.60 else "#A6ADC8"
+            )
 
     def update_transcription(self, text: str, is_final: bool = False) -> None:
         """Atualiza a caixa de transcrição."""
@@ -737,6 +871,10 @@ class CopilotUI(ctk.CTk):
 
         self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
         self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
+        if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
+            self.token_usage_label.configure(bg=prof["main_bg"])
+        if hasattr(self, "resize_grip") and self.resize_grip.winfo_exists():
+            self.resize_grip.configure(bg=prof["main_bg"])
 
         self.opacity_btn.configure(text=prof["label"])
         logger.info(f"Tema e opacidade alterados para: {prof['label']}")
@@ -784,8 +922,8 @@ class CopilotUI(ctk.CTk):
         self._current_position_idx = (self._current_position_idx + 1) % len(self._position_presets)
 
         mx, my, mw, mh = self._get_active_monitor()
-        w = 520
-        h = 390
+        w = max(440, self.winfo_width())
+        h = max(260, self.winfo_height())
 
         if preset == "top-center":
             # Ancorado logo abaixo da webcam no topo do monitor ativo
