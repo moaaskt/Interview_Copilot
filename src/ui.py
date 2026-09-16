@@ -37,7 +37,8 @@ class CopilotUI(ctk.CTk):
         super().__init__()
 
         self.title(title)
-        self.geometry("520x390+100+100")
+        self.geometry("540x390+100+100")
+        self.minsize(440, 260)
 
         # Configurações de overlay
         self.overrideredirect(True)
@@ -65,7 +66,7 @@ class CopilotUI(ctk.CTk):
         self._opacity_profiles = [
             {
                 "alpha": 0.92,
-                "label": "👓 92% Padrão",
+                "label": "👓 92%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -75,7 +76,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 1.0,
-                "label": "👓 100% Foco",
+                "label": "👓 100%",
                 "main_bg": "#11111B",
                 "header_bg": "#08080C",
                 "textbox_bg": "#040406",
@@ -85,7 +86,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 0.75,
-                "label": "👓 75% Discreto",
+                "label": "👓 75%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -95,7 +96,7 @@ class CopilotUI(ctk.CTk):
             },
             {
                 "alpha": 0.85,
-                "label": "👓 85% Suave",
+                "label": "👓 85%",
                 "main_bg": "#181825",
                 "header_bg": "#11111B",
                 "textbox_bg": "#0D0E15",
@@ -116,6 +117,12 @@ class CopilotUI(ctk.CTk):
         self._drag_target_x: int = 0
         self._drag_target_y: int = 0
         self._drag_scheduled: bool = False
+
+        # Estado para redimensionamento manual livre via grip handle
+        self._resize_start_x: Optional[int] = None
+        self._resize_start_y: Optional[int] = None
+        self._resize_start_w: Optional[int] = None
+        self._resize_start_h: Optional[int] = None
 
         self._setup_ui()
         self._init_after_id = self.after(100, lambda: self._apply_opacity(self._opacity_profiles[self._current_opacity_idx]["alpha"]))
@@ -140,7 +147,7 @@ class CopilotUI(ctk.CTk):
             bg="#181825",
             cursor="fleur"
         )
-        self.title_label.pack(side="left", padx=10)
+        self.title_label.pack(side="left", padx=(6, 4))
 
         # Badge de Status
         self.status_badge = tk.Label(
@@ -151,7 +158,7 @@ class CopilotUI(ctk.CTk):
             bg="#181825",
             cursor="fleur"
         )
-        self.status_badge.pack(side="left", padx=(8, 4))
+        self.status_badge.pack(side="left", padx=4)
 
         # Badge do Provedor de IA
         self.provider_badge = tk.Label(
@@ -216,7 +223,7 @@ class CopilotUI(ctk.CTk):
             self.header_frame,
             text=self._opacity_profiles[self._current_opacity_idx]["label"],
             font=("Helvetica", 9),
-            width=88,
+            width=68,
             height=24,
             fg_color="transparent",
             hover_color="#313244",
@@ -312,6 +319,20 @@ class CopilotUI(ctk.CTk):
             wrap="word"
         )
         self.ai_textbox.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+
+        # Grip Handle no canto inferior direito para redimensionamento livre do overlay
+        self.resize_grip = tk.Label(
+            self.main_frame,
+            text="⇲",
+            font=("Segoe UI Symbol", 10),
+            fg="#585B70",
+            bg="#1E1E2E",
+            cursor="size_nw_se"
+        )
+        self.resize_grip.place(relx=1.0, rely=1.0, anchor="se", x=-4, y=-4)
+        self.resize_grip.bind("<Button-1>", self._start_resize)
+        self.resize_grip.bind("<B1-Motion>", self._resize)
+        self.resize_grip.bind("<ButtonRelease-1>", self._stop_resize)
 
         # Registra atalhos de teclado e atualiza legendas dos botões com os atalhos atuais
         self._bind_hotkeys()
@@ -581,6 +602,36 @@ class CopilotUI(ctk.CTk):
         self._drag_scheduled = False
         return "break"
 
+    def _start_resize(self, event) -> Optional[str]:
+        """Salva a posição e o tamanho iniciais ao iniciar o redimensionamento manual."""
+        self._resize_start_x = event.x_root
+        self._resize_start_y = event.y_root
+        self._resize_start_w = self.winfo_width()
+        self._resize_start_h = self.winfo_height()
+        return "break"
+
+    def _resize(self, event) -> Optional[str]:
+        """Calcula e aplica novas dimensões respeitando limites mínimos ergonômicos."""
+        if getattr(self, "_resize_start_x", None) is None or getattr(self, "_resize_start_y", None) is None:
+            return "break"
+
+        dw = event.x_root - self._resize_start_x
+        dh = event.y_root - self._resize_start_y
+
+        new_w = max(440, self._resize_start_w + dw)
+        new_h = max(260, self._resize_start_h + dh)
+
+        self.geometry(f"{new_w}x{new_h}")
+        return "break"
+
+    def _stop_resize(self, event=None) -> Optional[str]:
+        """Finaliza o redimensionamento e limpa o estado."""
+        self._resize_start_x = None
+        self._resize_start_y = None
+        self._resize_start_w = None
+        self._resize_start_h = None
+        return "break"
+
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
         if self.on_toggle_recording:
             self.on_toggle_recording()
@@ -737,6 +788,8 @@ class CopilotUI(ctk.CTk):
 
         self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
         self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
+        if hasattr(self, "resize_grip") and self.resize_grip.winfo_exists():
+            self.resize_grip.configure(bg=prof["main_bg"])
 
         self.opacity_btn.configure(text=prof["label"])
         logger.info(f"Tema e opacidade alterados para: {prof['label']}")
@@ -784,8 +837,8 @@ class CopilotUI(ctk.CTk):
         self._current_position_idx = (self._current_position_idx + 1) % len(self._position_presets)
 
         mx, my, mw, mh = self._get_active_monitor()
-        w = 520
-        h = 390
+        w = max(440, self.winfo_width())
+        h = max(260, self.winfo_height())
 
         if preset == "top-center":
             # Ancorado logo abaixo da webcam no topo do monitor ativo
