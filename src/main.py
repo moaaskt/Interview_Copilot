@@ -62,6 +62,8 @@ class CopilotApp:
             response_style=self.config_manager.response_style,
             custom_persona=self.config_manager.custom_persona,
             on_provider_change=self.on_provider_change,
+            on_status_notice=self.on_status_notice,
+            on_token_usage_change=self.on_token_usage_change,
         )
         self.transcriber = Transcriber(
             api_key=self.deepgram_key,
@@ -133,6 +135,17 @@ class CopilotApp:
             self.loop.call_soon_threadsafe(self.ui.set_ai_provider, provider_name)
         else:
             self.ui.set_ai_provider(provider_name)
+
+    def on_status_notice(self, message: str, color: str = "#F9E2AF") -> None:
+        """Callback chamada quando um aviso transitório de sistema deve ser exibido no HUD."""
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.ui.set_status, message, color)
+        else:
+            self.ui.set_status(message, color)
+
+    def on_token_usage_change(self, used: int, limit: int) -> None:
+        """Callback chamada quando a contagem de tokens por minuto (TPM) é atualizada."""
+        logger.debug(f"[CopilotApp] Token TPM update: {used}/{limit} ({(used/limit)*100:.1f}%)")
 
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""
