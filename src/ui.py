@@ -369,37 +369,66 @@ class CopilotUI(ctk.CTk):
         return (label, entry.strip())
 
     def _build_quick_prompt_buttons(self) -> None:
-        """Renderiza botões de atalho rápido para perguntas frequentes de entrevistas técnicas."""
+        """Renderiza botões de atalho rápido para todas as perguntas cadastradas, com quebra de linha (wrap) dinâmica."""
         # Limpa widgets anteriores
         for widget in self.quick_prompts_frame.winfo_children():
             widget.destroy()
 
+        questions = self.config_manager.quick_questions
+        if not questions:
+            return
+
+        # Calcula a largura disponível no container para o wrap
+        try:
+            self.update_idletasks()
+            container_w = self.quick_prompts_frame.winfo_width()
+        except Exception:
+            container_w = 0
+
+        if container_w <= 60:
+            container_w = max(420, self.winfo_width() - 24)
+
+        # Cria primeira linha
+        row_frame = ctk.CTkFrame(self.quick_prompts_frame, fg_color="transparent")
+        row_frame.pack(fill="x", pady=1)
+
         lbl = ctk.CTkLabel(
-            self.quick_prompts_frame,
+            row_frame,
             text="⚡ Rápidas:",
             font=ctk.CTkFont(size=10, weight="bold"),
             text_color="#89B4FA"
         )
         lbl.pack(side="left", padx=(0, 6))
 
-        questions = self.config_manager.quick_questions
-        for q in questions[:5]:
+        current_w = 72
+        current_row = row_frame
+
+        # Itera por TODAS as perguntas salvas, sem limite fixo
+        for q in questions:
             label_text, prompt_text = self._parse_quick_prompt_entry(q)
             if not label_text or not prompt_text:
                 continue
 
+            btn_w = max(58, len(label_text) * 7 + 14)
+            # Se o botão ultrapassar a largura disponível da linha atual, cria uma nova linha (wrap)
+            if current_w + btn_w + 4 > container_w and current_w > 80:
+                current_row = ctk.CTkFrame(self.quick_prompts_frame, fg_color="transparent")
+                current_row.pack(fill="x", pady=1)
+                current_w = 0
+
             btn = ctk.CTkButton(
-                self.quick_prompts_frame,
+                current_row,
                 text=label_text,
                 font=ctk.CTkFont(size=10),
                 fg_color="#181825",
                 text_color="#CDD6F4",
                 hover_color="#313244",
                 height=22,
-                width=max(68, len(label_text) * 7 + 16),
+                width=btn_w,
                 command=lambda question=prompt_text: self._handle_quick_prompt(question)
             )
             btn.pack(side="left", padx=2)
+            current_w += btn_w + 4
 
     def _handle_quick_prompt(self, question: str) -> Optional[str]:
         """Dispara pergunta rápida pré-selecionada."""
@@ -625,11 +654,14 @@ class CopilotUI(ctk.CTk):
         return "break"
 
     def _stop_resize(self, event=None) -> Optional[str]:
-        """Finaliza o redimensionamento e limpa o estado."""
+        """Finaliza o redimensionamento, limpa o estado e re-renderiza o wrap de perguntas rápidas."""
+        old_w = getattr(self, "_resize_start_w", None)
         self._resize_start_x = None
         self._resize_start_y = None
         self._resize_start_w = None
         self._resize_start_h = None
+        if old_w and abs(self.winfo_width() - old_w) > 15:
+            self.after_idle(self._build_quick_prompt_buttons)
         return "break"
 
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
