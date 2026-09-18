@@ -75,6 +75,7 @@ class CopilotApp:
             audio_callback=self.on_audio_data,
             device_index=self.config_manager.audio_device_index,
             device_name=self.config_manager.audio_device_name,
+            pre_roll_seconds=self.config_manager.pre_roll_seconds,
         )
 
         # Gerenciador de Atalhos Globais do Sistema Operacional (pynput)
@@ -105,6 +106,7 @@ class CopilotApp:
         """Manipula clique em pergunta rápida pré-configurada."""
         if self.is_recording:
             self.is_recording = False
+            self.audio_capture.stop_recording()
             self.ui.set_recording_state(False)
 
         self.transcript_buffer = [question]
@@ -174,16 +176,25 @@ class CopilotApp:
             self._stop_and_respond()
 
     def _start_recording(self) -> None:
-        """Inicia uma nova rodada de gravação para a pergunta."""
+        """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido."""
         self.is_recording = True
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_recording_state(True)
-        logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
+
+        pre_roll_chunks = self.audio_capture.start_recording()
+        if pre_roll_chunks:
+            pre_roll_sec = len(pre_roll_chunks) * (self.audio_capture.chunk_size / self.audio_capture.sample_rate)
+            logger.info(f"🎙 Gravação iniciada com injeção de {len(pre_roll_chunks)} chunks pré-gravados (~{pre_roll_sec:.1f}s).")
+            for chunk in pre_roll_chunks:
+                self.transcriber.send_audio(chunk)
+        else:
+            logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
 
     def _stop_and_respond(self) -> None:
         """Para a gravação e envia o texto consolidado para a IA."""
         self.is_recording = False
+        self.audio_capture.stop_recording()
         self.ui.set_recording_state(False)
         logger.info("⏹ Gravação finalizada.")
         self.respond_now()
@@ -193,6 +204,7 @@ class CopilotApp:
         # Se ainda estiver gravando, encerra a captura
         if self.is_recording:
             self.is_recording = False
+            self.audio_capture.stop_recording()
             self.ui.set_recording_state(False)
 
         # Prioriza o buffer acumulado; se vazio, pega o texto atualmente digitado/exibido na UI
@@ -219,6 +231,10 @@ class CopilotApp:
 
     def clear_session(self) -> None:
         """Limpa dados da tela e cancela qualquer processamento pendente."""
+        if self.is_recording:
+            self.is_recording = False
+            self.audio_capture.stop_recording()
+            self.ui.set_recording_state(False)
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_status("● Pronto", "#A6ADC8")
