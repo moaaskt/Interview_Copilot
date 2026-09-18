@@ -870,7 +870,20 @@ class CopilotUI(ctk.CTk):
         self.status_badge.configure(bg=prof["header_bg"])
         self.audio_meter_label.configure(bg=prof["header_bg"])
 
-        self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
+        if self._is_question_detected:
+            self.transcription_textbox.configure(
+                fg_color=prof["textbox_bg"],
+                text_color=prof["tx_text"],
+                border_width=2,
+                border_color="#FAB387"
+            )
+        else:
+            self.transcription_textbox.configure(
+                fg_color=prof["textbox_bg"],
+                text_color=prof["tx_text"],
+                border_width=0,
+                border_color=prof["border"]
+            )
         self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
         if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
             self.token_usage_label.configure(bg=prof["main_bg"])
