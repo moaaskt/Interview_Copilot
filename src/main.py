@@ -159,6 +159,8 @@ class CopilotApp:
     def on_pre_roll_change(self, enabled: bool) -> None:
         """Callback chamada quando o usuário ativa ou desativa o pré-roll de áudio nas configurações."""
         logger.info(f"Pré-roll de áudio alterado para: enabled={enabled}")
+        if not enabled and hasattr(self, "audio_capture") and hasattr(self.audio_capture, "pre_roll_buffer"):
+            self.audio_capture.pre_roll_buffer.clear()
         if enabled:
             self.on_status_notice("🎙 Pré-Roll: Ativado", "#A6E3A1")
         else:
