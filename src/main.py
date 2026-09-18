@@ -101,6 +101,10 @@ class CopilotApp:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
         self.decay_task: asyncio.Task | None = None
+        self.auto_trigger_task: asyncio.Task | None = None
+
+        # Motor determinístico de detecção de perguntas
+        self.question_detector = QuestionDetector()
 
         # Estado da gravação e buffer de transcrição consolidada
         self.is_recording = False
