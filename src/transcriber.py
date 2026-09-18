@@ -146,6 +146,19 @@ class Transcriber:
                 logger.error(f"Erro ao enviar áudio para a Deepgram: {e}")
                 self._handle_disconnect()
 
+    def finalize(self) -> None:
+        """Envia sinal de Finalize para descarregar buffers e limpar o estado do decodificador no servidor Deepgram."""
+        if self.connection and self.is_connected:
+            try:
+                if hasattr(self.connection, "finalize"):
+                    self.connection.finalize()
+                else:
+                    import json
+                    self.connection.send(json.dumps({"type": "Finalize"}))
+                logger.info("[Deepgram] Sinal de Finalize enviado com sucesso.")
+            except Exception as e:
+                logger.debug(f"[Deepgram] Falha ao enviar finalize: {e}")
+
     async def close(self) -> None:
         """Encerra a conexão WebSocket com a Deepgram."""
         self.should_run = False
