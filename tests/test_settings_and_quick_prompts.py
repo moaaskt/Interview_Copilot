@@ -281,10 +281,14 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
             self.assertEqual(reloaded.quick_questions, custom_lines)
 
             # 3. Verifica se os botões do HUD foram atualizados dinamicamente
-            hud_buttons = [
-                w for w in ui.quick_prompts_frame.winfo_children()
-                if isinstance(w, type(sw.save_quick_btn))
-            ]
+            hud_buttons = []
+            for child in ui.quick_prompts_frame.winfo_children():
+                if isinstance(child, type(sw.save_quick_btn)):
+                    hud_buttons.append(child)
+                else:
+                    for subchild in child.winfo_children():
+                        if isinstance(subchild, type(sw.save_quick_btn)):
+                            hud_buttons.append(subchild)
             button_texts = [b.cget("text") for b in hud_buttons]
             self.assertIn("Meu Perfil", button_texts)
             self.assertIn("NodeJS", button_texts)
