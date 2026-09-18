@@ -126,6 +126,7 @@ class SettingsWindow(ctk.CTkToplevel):
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
         on_quick_questions_change: Optional[Callable[[List[str]], None]] = None,
         on_question_detection_change: Optional[Callable[[bool], None]] = None,
+        on_pre_roll_change: Optional[Callable[[bool], None]] = None,
     ) -> None:
         super().__init__(parent)
 
@@ -136,6 +137,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_hotkeys_change = on_hotkeys_change
         self.on_quick_questions_change = on_quick_questions_change
         self.on_question_detection_change = on_question_detection_change
+        self.on_pre_roll_change = on_pre_roll_change
 
         self.title("Configurações - Interview Copilot")
         self.geometry("560x490")
@@ -271,6 +273,37 @@ class SettingsWindow(ctk.CTkToplevel):
         self.vu_progress_bar.set(0.0)
         self.vu_progress_bar.pack(side="left", fill="x", expand=True, padx=(8, 12))
 
+        # Seção de Buffer Pré-Roll de Áudio
+        pr_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
+        pr_box.pack(fill="x", padx=12, pady=(0, 10))
+
+        pr_header_row = ctk.CTkFrame(pr_box, fg_color="transparent")
+        pr_header_row.pack(fill="x", padx=12, pady=(10, 4))
+
+        self.pr_switch = ctk.CTkSwitch(
+            pr_header_row,
+            text="🎙 Usar pré-roll ao iniciar gravação",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#CDD6F4",
+            progress_color="#A6E3A1",
+            command=self._on_toggle_pre_roll
+        )
+        self.pr_switch.pack(side="left")
+
+        if self.config_manager.pre_roll_enabled:
+            self.pr_switch.select()
+        else:
+            self.pr_switch.deselect()
+
+        pr_desc = ctk.CTkLabel(
+            pr_box,
+            text="Envia os segundos anteriores ao início da gravação para evitar cortar o começo da fala.",
+            font=ctk.CTkFont(size=11),
+            text_color="#A6ADC8",
+            anchor="w"
+        )
+        pr_desc.pack(fill="x", padx=12, pady=(0, 10))
+
         # Seção de Detecção Automática de Perguntas
         qd_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
         qd_box.pack(fill="x", padx=12, pady=(0, 12))
@@ -304,6 +337,14 @@ class SettingsWindow(ctk.CTkToplevel):
 
         # Carrega lista inicial de dispositivos
         self._refresh_device_list()
+
+    def _on_toggle_pre_roll(self) -> None:
+        """Salva a preferência de pré-roll de áudio e notifica callback."""
+        is_enabled = bool(self.pr_switch.get())
+        self.config_manager.set("audio", "pre_roll_enabled", is_enabled)
+        if self.on_pre_roll_change:
+            self.on_pre_roll_change(is_enabled)
+        logger.info(f"Uso de pré-roll de áudio alterado para: {is_enabled}")
 
     def _on_toggle_question_detection(self) -> None:
         """Salva a preferência de detecção automática de perguntas e notifica callback."""
