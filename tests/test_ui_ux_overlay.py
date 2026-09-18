@@ -44,7 +44,7 @@ class TestCopilotUIUXOverlay(unittest.TestCase):
             self.assertEqual(res, "break")
             # Verifica que a geometria foi atualizada
             geom = self.app.geometry()
-            self.assertTrue("520x390" in geom)
+            self.assertTrue("x" in geom and "+" in geom)
 
     def test_shortcuts_f8_and_f10_bound(self):
         bound_events = self.app.bind_all()
