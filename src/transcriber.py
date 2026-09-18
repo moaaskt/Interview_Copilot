@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from deepgram import (
     DeepgramClient,
     DeepgramClientOptions,
@@ -25,6 +25,8 @@ class Transcriber:
         on_connection_change: Optional[Callable[[bool], None]] = None,
         language: str = "pt-BR",
         sample_rate: int = 16000,
+        keywords: Optional[List[str]] = None,
+        endpointing: int = 350,
     ) -> None:
         self.api_key = api_key
         self.on_interim_transcript = on_interim_transcript
@@ -32,6 +34,8 @@ class Transcriber:
         self.on_connection_change = on_connection_change
         self.language = language
         self.sample_rate = sample_rate
+        self.keywords = list(keywords) if keywords else []
+        self.endpointing = endpointing
 
         self.client: Optional[DeepgramClient] = None
         self.connection = None
@@ -73,16 +77,21 @@ class Transcriber:
             self.connection.on(LiveTranscriptionEvents.Error, on_error)
             self.connection.on(LiveTranscriptionEvents.Close, on_close)
 
-            options = LiveOptions(
-                model="nova-2",
-                language=self.language,
-                smart_format=True,
-                interim_results=True,
-                endpointing=300,
-                encoding="linear16",
-                channels=1,
-                sample_rate=self.sample_rate,
-            )
+            live_opts_kwargs = {
+                "model": "nova-2",
+                "language": self.language,
+                "smart_format": True,
+                "punctuate": True,
+                "interim_results": True,
+                "endpointing": self.endpointing,
+                "encoding": "linear16",
+                "channels": 1,
+                "sample_rate": self.sample_rate,
+            }
+            if self.keywords:
+                live_opts_kwargs["keywords"] = self.keywords
+
+            options = LiveOptions(**live_opts_kwargs)
 
             if self.connection.start(options) is False:
                 logger.error("Falha ao iniciar conexão WebSocket com a Deepgram.")
