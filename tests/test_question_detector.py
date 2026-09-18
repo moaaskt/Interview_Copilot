@@ -189,13 +189,128 @@ class TestMainQuestionDetectorIntegration(unittest.TestCase):
             app.on_final_transcript("Como você aborda testes unitários?")
             mock_schedule.assert_called_once()
 
-        # 3. Cancelamento ao iniciar gravação / limpar sessão / responder
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_interim_does_not_confirm_question_or_trigger(self, *mocks):
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+        app.is_recording = True
+        app.config_manager.set("question_detection", "enabled", True)
+        app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
+
+        # 1. Interim "Como"
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_interim_transcript("Como")
+            mock_schedule.assert_not_called()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+        # 2. Interim "Como você"
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_interim_transcript("Como você")
+            mock_schedule.assert_not_called()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+        # 3. Interim "Como você faria"
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_interim_transcript("Como você faria")
+            mock_schedule.assert_not_called()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_mandatory_real_world_sequence_regression(self, *mocks):
+        """
+        Reproduz com precisão o cenário real da entrevista:
+        1. FINAL: "Como você faria..." -> agenda auto-trigger
+        2. INTERIM: "Como você faria uma API..." -> cancela auto-trigger e desliga highlight
+        3. INTERIM: "Como você faria uma API REST em Go..." -> continua sem auto-trigger
+        4. FINAL: "Como você faria uma API REST em Go?" -> confirma nova pergunta e agenda exatamente 1 auto-trigger
+        """
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+        app.is_recording = True
+        app.config_manager.set("question_detection", "enabled", True)
+        app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
+
+        # Passo 1: FINAL preliminar agenda auto-trigger
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_final_transcript("Como você faria...")
+            mock_schedule.assert_called_once()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, True)
+
+        # Passo 2: O entrevistador retoma a fala -> INTERIM cancela o timer imediatamente
         mock_task = MagicMock()
         mock_task.done.return_value = False
         app.auto_trigger_task = mock_task
-        app._cancel_auto_trigger()
+        app.on_interim_transcript("uma API...")
         mock_task.cancel.assert_called_once()
         self.assertIsNone(app.auto_trigger_task)
+        app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+        # Passo 3: Mais INTERIM com a continuação da frase -> nenhum timer agendado
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_interim_transcript("uma API REST em Go...")
+            mock_schedule.assert_not_called()
+            self.assertIsNone(app.auto_trigger_task)
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+        # Passo 4: FINAL da pergunta completa -> confirma pergunta e agenda exatamente 1 novo timer
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_final_transcript("uma API REST em Go?")
+            mock_schedule.assert_called_once()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, True)
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_final_affirmative_with_como_does_not_trigger(self, *mocks):
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+        app.is_recording = True
+        app.config_manager.set("question_detection", "enabled", True)
+        app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
+
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_final_transcript("Nós utilizamos o Docker como ambiente principal de desenvolvimento.")
+            mock_schedule.assert_not_called()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_final_without_question_mark_confirms_heuristics(self, *mocks):
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+        app.is_recording = True
+        app.config_manager.set("question_detection", "enabled", True)
+        app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
+
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_final_transcript("Me conte sobre sua experiência com Docker")
+            mock_schedule.assert_called_once()
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, True)
 
 
 if __name__ == "__main__":
