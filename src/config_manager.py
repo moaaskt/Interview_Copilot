@@ -6,11 +6,33 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_TECH_KEYWORDS: List[str] = [
+    # Linguagens & Frameworks
+    "PHP:2", "CodeIgniter:3", "CodeIgniter 4:3", "Python:2", "FastAPI:2",
+    "TypeScript:2", "JavaScript:2", "React:2", "Next.js:2", "Node.js:2",
+    "HTML5:2", "CSS3:2", "Tailwind:2",
+    # Bancos de Dados & Caches
+    "MySQL:2", "PostgreSQL:2", "Redis:2", "MongoDB:2", "SQLite:2", "NoSQL:2", "SQL:2",
+    # DevOps & Infra
+    "Docker:2", "Docker Compose:2", "Kubernetes:2", "AWS:2", "CI/CD:2",
+    "Git:2", "GitHub:2", "Linux:2", "Nginx:2", "Apache:2", "Postman:2",
+    # Arquitetura & Conceitos
+    "API REST:2", "RESTful:2", "WebSocket:2", "JWT:2", "OAuth:2",
+    "Microservices:2", "CRUD:2", "STAR:2", "Unit Tests:2", "TDD:2", "Clean Code:2",
+    # Projetos do Candidato
+    "Doar Digital:2", "Evento Santo:2", "VetOS:2", "Rastrecob:2", "WhatsMiau:3", "Asaas:2", "SENAI:2",
+]
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "audio": {
         "device_index": None,
         "device_name": "Padrão do Sistema",
         "pre_roll_seconds": 5.0,
+    },
+    "transcription": {
+        "language": "pt-BR",
+        "endpointing_ms": 350,
+        "custom_keywords": [],
     },
     "llm": {
         "response_style": "direta",  # "direta", "tecnica", "star"
@@ -148,3 +170,84 @@ class ConfigManager:
     @property
     def quick_questions(self) -> List[str]:
         return self._config.get("quick_questions", [])
+
+    @property
+    def transcription_language(self) -> str:
+        return self._config.get("transcription", {}).get("language", "pt-BR")
+
+    @property
+    def transcription_endpointing_ms(self) -> int:
+        return int(self._config.get("transcription", {}).get("endpointing_ms", 350))
+
+    @property
+    def custom_keywords(self) -> List[str]:
+        return self._config.get("transcription", {}).get("custom_keywords", [])
+
+    def get_combined_keywords(self) -> List[str]:
+        """
+        Mescla a lista de keywords padrão com as custom_keywords do usuário
+        seguindo normalização determinística:
+        - Sanitização de espaços (strip).
+        - Descarte de strings vazias ou nulas.
+        - Chave de unicidade: base_term.lower().
+        - Custom keywords sobrescrevem termos padrão com o mesmo nome base.
+        - Preserva a ordem original do padrão e anexa novos custom termos ao final.
+        """
+        def _parse_term(raw: str) -> Optional[tuple[str, str, Optional[str]]]:
+            if not raw:
+                return None
+            cleaned = str(raw).strip()
+            if not cleaned:
+                return None
+            if ":" in cleaned:
+                parts = cleaned.rsplit(":", 1)
+                base = parts[0].strip()
+                weight = parts[1].strip()
+                if not base:
+                    return None
+                return (base.lower(), base, weight if weight else None)
+            else:
+                return (cleaned.lower(), cleaned, None)
+
+        custom_raw_list = self.custom_keywords or []
+        custom_map: Dict[str, tuple[str, Optional[str]]] = {}
+        custom_keys_order: List[str] = []
+
+        for raw in custom_raw_list:
+            parsed = _parse_term(raw)
+            if parsed:
+                key, base, weight = parsed
+                if key not in custom_map:
+                    custom_keys_order.append(key)
+                custom_map[key] = (base, weight)
+
+        result: List[str] = []
+        handled_keys: set = set()
+
+        # 1. Processa keywords padrão preservando a ordem
+        for raw in DEFAULT_TECH_KEYWORDS:
+            parsed = _parse_term(raw)
+            if not parsed:
+                continue
+            key, base, weight = parsed
+            if key in handled_keys:
+                continue
+
+            if key in custom_map:
+                c_base, c_weight = custom_map[key]
+                formatted = f"{c_base}:{c_weight}" if c_weight is not None else c_base
+            else:
+                formatted = f"{base}:{weight}" if weight is not None else base
+
+            result.append(formatted)
+            handled_keys.add(key)
+
+        # 2. Anexa custom keywords que não existiam no padrão
+        for key in custom_keys_order:
+            if key not in handled_keys:
+                c_base, c_weight = custom_map[key]
+                formatted = f"{c_base}:{c_weight}" if c_weight is not None else c_base
+                result.append(formatted)
+                handled_keys.add(key)
+
+        return result
