@@ -60,6 +60,7 @@ class CopilotUI(ctk.CTk):
         self._offset_x = 0
         self._offset_y = 0
         self._is_recording = False
+        self._is_question_detected = False
         self._registered_hotkeys: list[str] = []
 
         # Perfis de Visibilidade / Opacidade Dinâmica (Alto contraste garantido)
@@ -869,7 +870,20 @@ class CopilotUI(ctk.CTk):
         self.status_badge.configure(bg=prof["header_bg"])
         self.audio_meter_label.configure(bg=prof["header_bg"])
 
-        self.transcription_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["tx_text"])
+        if self._is_question_detected:
+            self.transcription_textbox.configure(
+                fg_color=prof["textbox_bg"],
+                text_color=prof["tx_text"],
+                border_width=2,
+                border_color="#FAB387"
+            )
+        else:
+            self.transcription_textbox.configure(
+                fg_color=prof["textbox_bg"],
+                text_color=prof["tx_text"],
+                border_width=0,
+                border_color=prof["border"]
+            )
         self.ai_textbox.configure(fg_color=prof["textbox_bg"], text_color=prof["ai_text"])
         if hasattr(self, "token_usage_label") and self.token_usage_label.winfo_exists():
             self.token_usage_label.configure(bg=prof["main_bg"])
@@ -947,9 +961,35 @@ class CopilotUI(ctk.CTk):
         """Limpa a caixa de resposta da IA para receber nova resposta."""
         self.ai_textbox.delete("1.0", "end")
 
+    def set_question_detected(self, is_detected: bool) -> None:
+        """Atualiza o realce visual (Catppuccin Peach) quando uma pergunta for detectada."""
+        self._is_question_detected = is_detected
+        if not hasattr(self, "transcription_label") or not self.transcription_label.winfo_exists():
+            return
+        if is_detected:
+            self.transcription_label.configure(
+                text="🎯 Pergunta Detectada:",
+                text_color="#FAB387"
+            )
+            self.transcription_textbox.configure(
+                border_width=2,
+                border_color="#FAB387"
+            )
+        else:
+            self.transcription_label.configure(
+                text="Pergunta Transcrita:",
+                text_color="#A6ADC8"
+            )
+            prof = self._opacity_profiles[self._current_opacity_idx]
+            self.transcription_textbox.configure(
+                border_width=0,
+                border_color=prof["border"]
+            )
+
     def clear_transcription(self) -> None:
-        """Limpa a caixa de texto de transcrição."""
+        """Limpa a caixa de texto de transcrição e reseta o destaque de pergunta."""
         self.transcription_textbox.delete("1.0", "end")
+        self.set_question_detected(False)
 
     def clear_all(self) -> None:
         """Limpa ambas as caixas de texto."""

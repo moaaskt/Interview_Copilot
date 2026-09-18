@@ -15,6 +15,7 @@ from llm_service import LLMService
 from ui import CopilotUI
 from config_manager import ConfigManager
 from hotkey_manager import HotkeyManager
+from question_detector import QuestionDetector
 
 # Configuração de Logging
 logging.basicConfig(
@@ -100,6 +101,10 @@ class CopilotApp:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.current_llm_task: asyncio.Task | None = None
         self.decay_task: asyncio.Task | None = None
+        self.auto_trigger_task: asyncio.Task | None = None
+
+        # Motor determinístico de detecção de perguntas
+        self.question_detector = QuestionDetector()
 
         # Estado da gravação e buffer de transcrição consolidada
         self.is_recording = False
@@ -171,6 +176,13 @@ class CopilotApp:
             except Exception as e:
                 logger.debug(f"[CopilotApp] Erro no loop de decaimento de TPM: {e}")
 
+    def _cancel_auto_trigger(self) -> None:
+        """Cancela qualquer auto-trigger pendente de forma segura."""
+        task = getattr(self, "auto_trigger_task", None)
+        if task and not task.done():
+            task.cancel()
+            self.auto_trigger_task = None
+
     def toggle_recording(self) -> None:
         """Alterna entre gravar pergunta e parar para responder."""
         if not self.is_recording:
@@ -180,10 +192,12 @@ class CopilotApp:
 
     def _start_recording(self) -> None:
         """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido."""
+        self._cancel_auto_trigger()
         self.is_recording = True
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_recording_state(True)
+        self.ui.set_question_detected(False)
 
         pre_roll_chunks = self.audio_capture.start_recording()
         if pre_roll_chunks:
@@ -196,6 +210,7 @@ class CopilotApp:
 
     def _stop_and_respond(self) -> None:
         """Para a gravação e envia o texto consolidado para a IA."""
+        self._cancel_auto_trigger()
         self.is_recording = False
         self.audio_capture.stop_recording()
         self.ui.set_recording_state(False)
@@ -204,6 +219,8 @@ class CopilotApp:
 
     def respond_now(self) -> None:
         """Dispara a geração de resposta com base na transcrição acumulada ou visível na tela."""
+        self._cancel_auto_trigger()
+
         # Se ainda estiver gravando, encerra a captura
         if self.is_recording:
             self.is_recording = False
@@ -234,12 +251,14 @@ class CopilotApp:
 
     def clear_session(self) -> None:
         """Limpa dados da tela e cancela qualquer processamento pendente."""
+        self._cancel_auto_trigger()
         if self.is_recording:
             self.is_recording = False
             self.audio_capture.stop_recording()
             self.ui.set_recording_state(False)
         self.transcript_buffer.clear()
         self.ui.clear_all()
+        self.ui.set_question_detected(False)
         self.ui.set_status("● Pronto", "#A6ADC8")
         if self.current_llm_task and not self.current_llm_task.done():
             self.current_llm_task.cancel()
@@ -277,18 +296,25 @@ class CopilotApp:
             self.transcriber.send_audio(data)
 
     def on_interim_transcript(self, text: str) -> None:
-        """Callback para transcrições parciais - concatena ao buffer existente e exibe na UI."""
+        """Callback para transcrições parciais - concatena ao buffer provisório, cancela timers ativos e NÃO confirma pergunta."""
         if not self.is_recording:
             return
+
+        # Fala em andamento: cancela imediatamente qualquer timer de auto-trigger pendente
+        self._cancel_auto_trigger()
 
         current_full = " ".join(self.transcript_buffer + [text]).strip()
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.ui.update_transcription, current_full, False)
+            if self.config_manager.question_detection_enabled:
+                self.loop.call_soon_threadsafe(self.ui.set_question_detected, False)
         else:
             self.ui.update_transcription(current_full, is_final=False)
+            if self.config_manager.question_detection_enabled:
+                self.ui.set_question_detected(False)
 
     def on_final_transcript(self, text: str) -> None:
-        """Callback para sentenças finalizadas - adiciona ao buffer de fala consolidado."""
+        """Callback para sentenças finalizadas - autoridade única para confirmação de pergunta e agendamento de auto-trigger."""
         if not self.is_recording:
             return
 
@@ -298,6 +324,38 @@ class CopilotApp:
             current_full = " ".join(self.transcript_buffer).strip()
             if self.loop and self.loop.is_running():
                 self.loop.call_soon_threadsafe(self.ui.update_transcription, current_full, False)
+            else:
+                self.ui.update_transcription(current_full, is_final=False)
+
+            if self.config_manager.question_detection_enabled:
+                detection = self.question_detector.detect(current_full)
+                if self.loop and self.loop.is_running():
+                    self.loop.call_soon_threadsafe(self.ui.set_question_detected, detection.is_question)
+                else:
+                    self.ui.set_question_detected(detection.is_question)
+
+                # Auto-trigger é agendado EXCLUSIVAMENTE em transcrição final com pergunta confirmada
+                if detection.is_question and self.config_manager.auto_trigger_enabled:
+                    self._schedule_auto_trigger()
+                else:
+                    self._cancel_auto_trigger()
+
+    def _schedule_auto_trigger(self) -> None:
+        """Agenda o auto-trigger debounced após silêncio configurado."""
+        self._cancel_auto_trigger()
+        if self.loop and self.loop.is_running():
+            delay_sec = self.config_manager.silence_delay_ms / 1000.0
+            self.auto_trigger_task = self.loop.create_task(self._auto_trigger_countdown(delay_sec))
+
+    async def _auto_trigger_countdown(self, delay_sec: float) -> None:
+        """Aguarda a janela de silêncio antes de acionar a resposta automaticamente."""
+        try:
+            await asyncio.sleep(delay_sec)
+            if self.is_recording:
+                logger.info(f"🎯 Auto-trigger disparado após {delay_sec:.1f}s de silêncio pós-pergunta.")
+                self._stop_and_respond()
+        except asyncio.CancelledError:
+            logger.debug("Auto-trigger cancelado por nova fala ou ação do usuário.")
 
     async def _process_llm_stream(self, question: str) -> None:
         """Processa o streaming de tokens da Groq e envia para a UI de forma segura."""
@@ -347,6 +405,7 @@ class CopilotApp:
     async def shutdown(self) -> None:
         """Finalização limpa e liberação de recursos."""
         logger.info("Encerrando aplicação...")
+        self._cancel_auto_trigger()
         if self.decay_task and not self.decay_task.done():
             self.decay_task.cancel()
         self.hotkey_manager.stop()

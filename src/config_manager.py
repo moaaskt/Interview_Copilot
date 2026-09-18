@@ -49,6 +49,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "cycle_opacity": "<F10>",
         "open_settings": "<F12>",
     },
+    "question_detection": {
+        "enabled": True,
+        "auto_trigger_on_silence": False,
+        "silence_delay_ms": 1200,
+    },
     "quick_questions": [
         "Sobre Mim | Fale mais sobre você e sua trajetória profissional",
         "Arquitetura | Explique a arquitetura de um projeto recente que você desenvolveu",
@@ -182,6 +187,18 @@ class ConfigManager:
     @property
     def custom_keywords(self) -> List[str]:
         return self._config.get("transcription", {}).get("custom_keywords", [])
+
+    @property
+    def question_detection_enabled(self) -> bool:
+        return bool(self._config.get("question_detection", {}).get("enabled", True))
+
+    @property
+    def auto_trigger_enabled(self) -> bool:
+        return bool(self._config.get("question_detection", {}).get("auto_trigger_on_silence", False))
+
+    @property
+    def silence_delay_ms(self) -> int:
+        return int(self._config.get("question_detection", {}).get("silence_delay_ms", 1200))
 
     def get_combined_keywords(self) -> List[str]:
         """
