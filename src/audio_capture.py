@@ -7,7 +7,10 @@ from typing import Callable, List, Optional
 
 import numpy as np
 
-from audio_buffer import AudioCaptureState, PreRollAudioBuffer
+try:
+    from audio_buffer import AudioCaptureState, PreRollAudioBuffer
+except ImportError:
+    from src.audio_buffer import AudioCaptureState, PreRollAudioBuffer
 
 logger = logging.getLogger(__name__)
 
