@@ -33,6 +33,7 @@ class CopilotUI(ctk.CTk):
         on_device_change: Optional[Callable[[Optional[int], str], None]] = None,
         on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
+        on_question_detection_change: Optional[Callable[[bool], None]] = None,
     ) -> None:
         super().__init__()
 
@@ -54,6 +55,7 @@ class CopilotUI(ctk.CTk):
         self.on_device_change = on_device_change
         self.on_llm_change = on_llm_change
         self.on_hotkeys_change = on_hotkeys_change
+        self.on_question_detection_change = on_question_detection_change
 
         self.settings_window: Optional[SettingsWindow] = None
 
@@ -482,6 +484,7 @@ class CopilotUI(ctk.CTk):
             on_llm_change=self.on_llm_change,
             on_hotkeys_change=self.apply_hotkeys,
             on_quick_questions_change=self._on_quick_questions_updated,
+            on_question_detection_change=self.on_question_detection_change,
         )
         return "break"
 
