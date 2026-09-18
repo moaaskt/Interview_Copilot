@@ -251,6 +251,9 @@ class AudioCapture:
                         logger.debug(f"[Windows Audio] Erro na conversão de áudio: {e}")
                         out_bytes = in_data
 
+                    if self.state == AudioCaptureState.PRE_ROLL:
+                        self.pre_roll_buffer.push(out_bytes)
+
                     loop.call_soon_threadsafe(self.audio_callback, out_bytes)
                 return (None, pyaudio.paContinue)
 
@@ -384,6 +387,8 @@ class AudioCapture:
                 if self.is_running and indata is not None:
                     # Converte o buffer PCM int16 para bytes
                     data_bytes = bytes(indata)
+                    if self.state == AudioCaptureState.PRE_ROLL:
+                        self.pre_roll_buffer.push(data_bytes)
                     loop.call_soon_threadsafe(self.audio_callback, data_bytes)
 
             self._linux_stream = sd.InputStream(
@@ -402,6 +407,22 @@ class AudioCapture:
     # ==========================================
     # INTERFACE PÚBLICA (Compatível com main.py)
     # ==========================================
+    def set_pre_roll_duration(self, seconds: float) -> None:
+        """Atualiza a duração da retenção do buffer circular de pré-áudio."""
+        self.pre_roll_buffer.set_duration(seconds)
+
+    def start_recording(self) -> List[bytes]:
+        """
+        Transiciona o estado de captura de PRE_ROLL para RECORDING e extrai
+        atomicamente todos os chunks de áudio pré-gravados retidos no buffer.
+        """
+        self.state = AudioCaptureState.RECORDING
+        return self.pre_roll_buffer.drain_all()
+
+    def stop_recording(self) -> None:
+        """Transiciona o estado de captura de RECORDING de volta para PRE_ROLL."""
+        self.state = AudioCaptureState.PRE_ROLL
+
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio dependendo da plataforma."""
         self._current_loop = loop
