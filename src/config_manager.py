@@ -28,6 +28,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "device_index": None,
         "device_name": "Padrão do Sistema",
         "pre_roll_seconds": 5.0,
+        "pre_roll_enabled": True,
     },
     "transcription": {
         "language": "pt-BR",
@@ -159,6 +160,10 @@ class ConfigManager:
     @property
     def pre_roll_seconds(self) -> float:
         return float(self._config.get("audio", {}).get("pre_roll_seconds", 5.0))
+
+    @property
+    def pre_roll_enabled(self) -> bool:
+        return bool(self._config.get("audio", {}).get("pre_roll_enabled", True))
 
     @property
     def response_style(self) -> str:
