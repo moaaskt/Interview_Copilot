@@ -1,11 +1,13 @@
 import asyncio
+import os
 import threading
 import time
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.audio_buffer import AudioCaptureState
 from src.audio_capture import AudioCapture
+from src.config_manager import ConfigManager
 from src.main import CopilotApp
 
 
@@ -51,6 +53,8 @@ class TestAudioPipelineIntegration(unittest.TestCase):
         app.loop = loop
         app.is_recording = False
         app.transcript_buffer = []
+        app.auto_trigger_task = None
+        app.config_manager = ConfigManager()
 
         mock_ui = MagicMock()
         mock_transcriber = MagicMock()
@@ -146,6 +150,59 @@ class TestAudioPipelineIntegration(unittest.TestCase):
         )
         self.assertEqual(cap.pre_roll_buffer.duration_seconds, 3.5)
         self.assertEqual(cap.state, AudioCaptureState.PRE_ROLL)
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_pipeline_pre_roll_disabled_discards_old_chunks(self, *mocks):
+        """Valida que com pre_roll_enabled=False, chunks anteriores são descartados e apenas áudio novo é transmitido."""
+        app = CopilotApp()
+        sent_chunks = []
+        mock_transcriber = MagicMock()
+        mock_transcriber.send_audio.side_effect = lambda c: sent_chunks.append(c)
+        app.transcriber = mock_transcriber
+
+        # Configura pre_roll desativado
+        app.config_manager.set("audio", "pre_roll_enabled", False)
+
+        audio_capture = AudioCapture(
+            audio_callback=app.on_audio_data,
+            sample_rate=self.sample_rate,
+            chunk_duration=0.1,
+            pre_roll_seconds=2.0,
+        )
+        audio_capture.is_running = True
+        app.audio_capture = audio_capture
+
+        # 1. Simula fala anterior à gravação (chunks 0 a 14) retida no buffer de pré-roll
+        for i in range(15):
+            chunk = self._make_chunk(i)
+            audio_capture.pre_roll_buffer.push(chunk)
+            app.on_audio_data(chunk)
+
+        self.assertEqual(audio_capture.pre_roll_buffer.current_chunks_count, 15)
+        self.assertEqual(len(sent_chunks), 0, "Nenhum chunk deveria ter sido enviado antes do início da gravação")
+
+        # 2. Usuário clica em GRAVAR com pre_roll_enabled = False
+        app._start_recording()
+
+        # O buffer de pré-roll deve ter sido drenado/limpo
+        self.assertEqual(audio_capture.pre_roll_buffer.current_chunks_count, 0)
+        # Chunks antigos 0..14 NÃO devem ter sido enviados
+        self.assertEqual(len(sent_chunks), 0, "Chunks pré-gravados foram enviados indevidamente quando pre_roll_enabled=False")
+
+        # 3. Novos chunks chegam após o início da gravação (chunks 15 a 25)
+        for i in range(15, 26):
+            chunk = self._make_chunk(i)
+            app.on_audio_data(chunk)
+
+        seq_numbers = [self._extract_seq(c) for c in sent_chunks]
+        expected_seqs = list(range(15, 26))
+        self.assertEqual(seq_numbers, expected_seqs, f"Stream de áudio novo incorreto: {seq_numbers}")
 
 
 if __name__ == "__main__":
