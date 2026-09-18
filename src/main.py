@@ -57,6 +57,7 @@ class CopilotApp:
             on_llm_change=self.on_llm_change,
             on_hotkeys_change=self.on_hotkeys_change,
             on_question_detection_change=self.on_question_detection_change,
+            on_pre_roll_change=self.on_pre_roll_change,
         )
         self.llm_service = LLMService(
             api_key=self.groq_key,
@@ -154,6 +155,14 @@ class CopilotApp:
         else:
             self.on_status_notice("🎯 Detecção de Perguntas: Ativada", "#A6E3A1")
 
+    def on_pre_roll_change(self, enabled: bool) -> None:
+        """Callback chamada quando o usuário ativa ou desativa o pré-roll de áudio nas configurações."""
+        logger.info(f"Pré-roll de áudio alterado para: enabled={enabled}")
+        if enabled:
+            self.on_status_notice("🎙 Pré-Roll: Ativado", "#A6E3A1")
+        else:
+            self.on_status_notice("🎙 Pré-Roll: Desativado", "#A6ADC8")
+
     def on_provider_change(self, provider_name: str) -> None:
         """Callback chamada quando o serviço LLM altera o provedor (ex: de Groq para Gemini)."""
         if self.loop and self.loop.is_running():
@@ -205,7 +214,7 @@ class CopilotApp:
             self._stop_and_respond()
 
     def _start_recording(self) -> None:
-        """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido."""
+        """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido se habilitado."""
         self._cancel_auto_trigger()
         self.transcript_buffer.clear()
         self.ui.clear_all()
@@ -213,13 +222,16 @@ class CopilotApp:
         self.ui.set_question_detected(False)
 
         pre_roll_chunks = self.audio_capture.start_recording()
-        if pre_roll_chunks:
+        if self.config_manager.pre_roll_enabled and pre_roll_chunks:
             pre_roll_sec = len(pre_roll_chunks) * (self.audio_capture.chunk_size / self.audio_capture.sample_rate)
             logger.info(f"🎙 Gravação iniciada com injeção de {len(pre_roll_chunks)} chunks pré-gravados (~{pre_roll_sec:.1f}s).")
             for chunk in pre_roll_chunks:
                 self.transcriber.send_audio(chunk)
         else:
-            logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
+            if not self.config_manager.pre_roll_enabled:
+                logger.info("🎙 Gravação iniciada sem pré-roll (chunks anteriores descartados).")
+            else:
+                logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
 
         self.is_recording = True
 
