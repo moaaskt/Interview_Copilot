@@ -125,6 +125,7 @@ class SettingsWindow(ctk.CTkToplevel):
         on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
         on_quick_questions_change: Optional[Callable[[List[str]], None]] = None,
+        on_question_detection_change: Optional[Callable[[bool], None]] = None,
     ) -> None:
         super().__init__(parent)
 
@@ -134,6 +135,7 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_llm_change = on_llm_change
         self.on_hotkeys_change = on_hotkeys_change
         self.on_quick_questions_change = on_quick_questions_change
+        self.on_question_detection_change = on_question_detection_change
 
         self.title("Configurações - Interview Copilot")
         self.geometry("560x490")
@@ -269,8 +271,47 @@ class SettingsWindow(ctk.CTkToplevel):
         self.vu_progress_bar.set(0.0)
         self.vu_progress_bar.pack(side="left", fill="x", expand=True, padx=(8, 12))
 
+        # Seção de Detecção Automática de Perguntas
+        qd_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
+        qd_box.pack(fill="x", padx=12, pady=(0, 12))
+
+        qd_header_row = ctk.CTkFrame(qd_box, fg_color="transparent")
+        qd_header_row.pack(fill="x", padx=12, pady=(10, 4))
+
+        self.qd_switch = ctk.CTkSwitch(
+            qd_header_row,
+            text="🎯 Detecção automática de perguntas",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#CDD6F4",
+            progress_color="#A6E3A1",
+            command=self._on_toggle_question_detection
+        )
+        self.qd_switch.pack(side="left")
+
+        if self.config_manager.question_detection_enabled:
+            self.qd_switch.select()
+        else:
+            self.qd_switch.deselect()
+
+        qd_desc = ctk.CTkLabel(
+            qd_box,
+            text="Identifica perguntas no áudio e destaca no HUD.",
+            font=ctk.CTkFont(size=11),
+            text_color="#A6ADC8",
+            anchor="w"
+        )
+        qd_desc.pack(fill="x", padx=12, pady=(0, 10))
+
         # Carrega lista inicial de dispositivos
         self._refresh_device_list()
+
+    def _on_toggle_question_detection(self) -> None:
+        """Salva a preferência de detecção automática de perguntas e notifica callback."""
+        is_enabled = bool(self.qd_switch.get())
+        self.config_manager.set("question_detection", "enabled", is_enabled)
+        if self.on_question_detection_change:
+            self.on_question_detection_change(is_enabled)
+        logger.info(f"Detecção automática de perguntas alterada para: {is_enabled}")
 
     def _refresh_device_list(self) -> None:
         """Busca dispositivos no sistema e atualiza o dropdown."""
