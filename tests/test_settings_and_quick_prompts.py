@@ -362,6 +362,61 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         finally:
             ui.destroy()
 
+    def test_pre_roll_switch_and_persistence(self):
+        mock_pr_callback = MagicMock()
+        ui = CopilotUI(
+            config_manager=self.config_manager,
+            on_pre_roll_change=mock_pr_callback
+        )
+        ui.update()
+
+        try:
+            ui.open_settings()
+            ui.update()
+            sw = ui.settings_window
+            self.assertIsNotNone(sw)
+
+            # 1. Default deve ser True
+            self.assertTrue(self.config_manager.pre_roll_enabled)
+            self.assertEqual(sw.pr_switch.get(), 1)
+
+            # 2. Desativa o switch de pré-roll
+            sw.pr_switch.deselect()
+            sw._on_toggle_pre_roll()
+            ui.update()
+
+            self.assertFalse(self.config_manager.pre_roll_enabled)
+            mock_pr_callback.assert_called_with(False)
+
+            # 3. Valida persistência em disco
+            reloaded = ConfigManager(config_path=self.temp_file.name)
+            self.assertFalse(reloaded.pre_roll_enabled)
+
+            # 4. Fecha e reabre SettingsWindow para conferir se o switch reflete o estado salvo (desativado)
+            sw.destroy()
+            ui.update()
+
+            ui.open_settings()
+            ui.update()
+            sw2 = ui.settings_window
+            self.assertEqual(sw2.pr_switch.get(), 0)
+
+            # 5. Reativa o switch
+            sw2.pr_switch.select()
+            sw2._on_toggle_pre_roll()
+            ui.update()
+
+            self.assertTrue(self.config_manager.pre_roll_enabled)
+            mock_pr_callback.assert_called_with(True)
+
+            # 6. Valida persistência em disco do estado reativado
+            reloaded2 = ConfigManager(config_path=self.temp_file.name)
+            self.assertTrue(reloaded2.pre_roll_enabled)
+            sw2.destroy()
+            ui.update()
+        finally:
+            ui.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()
