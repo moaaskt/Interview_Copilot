@@ -155,6 +155,8 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         app = object.__new__(CopilotApp)
         app.loop = None
         app.is_recording = True
+        app._recording_epoch = 0
+        app.auto_trigger_task = None
         app.transcript_buffer = []
         app.ui = MagicMock()
         app.respond_now = MagicMock()
