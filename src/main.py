@@ -56,6 +56,7 @@ class CopilotApp:
             on_device_change=self.on_device_change,
             on_llm_change=self.on_llm_change,
             on_hotkeys_change=self.on_hotkeys_change,
+            on_question_detection_change=self.on_question_detection_change,
         )
         self.llm_service = LLMService(
             api_key=self.groq_key,
@@ -140,6 +141,19 @@ class CopilotApp:
         logger.info(f"Atualizando atalhos globais no HotkeyManager: {new_hotkeys}")
         self.hotkey_manager.update_hotkeys(new_hotkeys)
 
+    def on_question_detection_change(self, enabled: bool) -> None:
+        """Callback chamada quando o usuário ativa ou desativa a detecção de perguntas nas configurações."""
+        logger.info(f"Detecção de perguntas alterada para: enabled={enabled}")
+        if not enabled:
+            self._cancel_auto_trigger()
+            if self.loop and self.loop.is_running():
+                self.loop.call_soon_threadsafe(self.ui.set_question_detected, False)
+            else:
+                self.ui.set_question_detected(False)
+            self.on_status_notice("🎯 Detecção de Perguntas: Desativada", "#A6ADC8")
+        else:
+            self.on_status_notice("🎯 Detecção de Perguntas: Ativada", "#A6E3A1")
+
     def on_provider_change(self, provider_name: str) -> None:
         """Callback chamada quando o serviço LLM altera o provedor (ex: de Groq para Gemini)."""
         if self.loop and self.loop.is_running():
@@ -193,7 +207,6 @@ class CopilotApp:
     def _start_recording(self) -> None:
         """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido."""
         self._cancel_auto_trigger()
-        self.is_recording = True
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_recording_state(True)
@@ -207,6 +220,8 @@ class CopilotApp:
                 self.transcriber.send_audio(chunk)
         else:
             logger.info("🎙 Gravação iniciada. Aguardando a fala da pergunta...")
+
+        self.is_recording = True
 
     def _stop_and_respond(self) -> None:
         """Para a gravação e envia o texto consolidado para a IA."""
@@ -339,6 +354,12 @@ class CopilotApp:
                     self._schedule_auto_trigger()
                 else:
                     self._cancel_auto_trigger()
+            else:
+                if self.loop and self.loop.is_running():
+                    self.loop.call_soon_threadsafe(self.ui.set_question_detected, False)
+                else:
+                    self.ui.set_question_detected(False)
+                self._cancel_auto_trigger()
 
     def _schedule_auto_trigger(self) -> None:
         """Agenda o auto-trigger debounced após silêncio configurado."""
