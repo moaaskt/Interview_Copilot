@@ -312,6 +312,61 @@ class TestMainQuestionDetectorIntegration(unittest.TestCase):
             mock_schedule.assert_called_once()
             app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, True)
 
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_disabled_question_detection_prevents_highlight_and_auto_trigger(self, *mocks):
+        """Quando enabled=False, transcrição ocorre normalmente sem detecção, sem destaque e sem auto-trigger."""
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+        app.is_recording = True
+        app.config_manager.set("question_detection", "enabled", False)
+        app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
+
+        with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
+            app.on_final_transcript("Como você faria a migração de um banco PostgreSQL?")
+            # Não agenda auto-trigger
+            mock_schedule.assert_not_called()
+            # Garante que destaque no HUD permaneça desativado
+            app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+            # Transcrição continua sendo acumulada no buffer
+            self.assertEqual(app.transcript_buffer, ["Como você faria a migração de um banco PostgreSQL?"])
+            app.loop.call_soon_threadsafe.assert_any_call(
+                app.ui.update_transcription, "Como você faria a migração de um banco PostgreSQL?", False
+            )
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_on_question_detection_change_cancels_pending_timer(self, *mocks):
+        """Ao desativar em tempo de execução com timer pendente, cancela a task e desliga highlight."""
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        app.auto_trigger_task = mock_task
+
+        # Desativa em runtime
+        app.on_question_detection_change(False)
+        mock_task.cancel.assert_called_once()
+        self.assertIsNone(app.auto_trigger_task)
+        app.loop.call_soon_threadsafe.assert_any_call(app.ui.set_question_detected, False)
+
+        # Reativa em runtime
+        app.on_question_detection_change(True)
+        self.assertIsNone(app.auto_trigger_task)
+
 
 if __name__ == "__main__":
     unittest.main()
