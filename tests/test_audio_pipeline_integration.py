@@ -80,8 +80,8 @@ class TestAudioPipelineIntegration(unittest.TestCase):
                     chunk = self._make_chunk(i)
                     if audio_capture.state == AudioCaptureState.PRE_ROLL:
                         audio_capture.pre_roll_buffer.push(chunk)
+                    app.on_audio_data(chunk)
 
-                    loop.call_soon_threadsafe(app.on_audio_data, chunk)
                     time.sleep(0.01)  # 10ms por chunk (acelerado para o teste)
             except Exception as e:
                 exceptions.append(e)
