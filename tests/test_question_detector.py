@@ -184,6 +184,7 @@ class TestMainQuestionDetectorIntegration(unittest.TestCase):
             mock_schedule.assert_not_called()
 
         # 2. Com auto_trigger ligado, final transcript com pergunta agenda auto_trigger
+        app.transcript_buffer.clear()
         app.config_manager.set("question_detection", "auto_trigger_on_silence", True)
         with patch.object(app, "_schedule_auto_trigger") as mock_schedule:
             app.on_final_transcript("Como você aborda testes unitários?")
