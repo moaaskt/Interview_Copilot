@@ -15,6 +15,7 @@ from llm_service import LLMService
 from ui import CopilotUI
 from config_manager import ConfigManager
 from hotkey_manager import HotkeyManager
+from question_detector import QuestionDetector
 
 # Configuração de Logging
 logging.basicConfig(
