@@ -52,6 +52,7 @@ class TestAudioPipelineIntegration(unittest.TestCase):
         app = object.__new__(CopilotApp)
         app.loop = loop
         app.is_recording = False
+        app._recording_epoch = 0
         app.transcript_buffer = []
         app.auto_trigger_task = None
         app.config_manager = ConfigManager()
@@ -203,6 +204,89 @@ class TestAudioPipelineIntegration(unittest.TestCase):
         seq_numbers = [self._extract_seq(c) for c in sent_chunks]
         expected_seqs = list(range(15, 26))
         self.assertEqual(seq_numbers, expected_seqs, f"Stream de áudio novo incorreto: {seq_numbers}")
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_session_isolation_and_delayed_callbacks_discarded(self, *mocks):
+        """Valida que mensagens atrasadas da sessão anterior não poluem a nova gravação."""
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+
+        # 1. Sessão 1: Gravação em andamento
+        app.start_recording()
+        self.assertTrue(app.is_recording)
+        epoch_1 = app._recording_epoch
+
+        app.on_final_transcript("Qual o satélite natural da Terra?")
+        self.assertEqual(app.transcript_buffer, ["Qual o satélite natural da Terra?"])
+
+        # 2. Usuário para a gravação (sem disparar IA)
+        app.stop_recording()
+        self.assertFalse(app.is_recording)
+        self.assertGreater(app._recording_epoch, epoch_1)
+
+        # 3. Mensagem atrasada da Deepgram chega quando o usuário já parou
+        app.on_final_transcript("A Lua.")
+        # Buffer e estado não devem aceitar essa mensagem
+        self.assertEqual(app.transcript_buffer, ["Qual o satélite natural da Terra?"])
+
+        # 4. Sessão 2: Usuário clica em GRAVAR novamente
+        with patch.object(app.ui, "clear_all") as mock_clear:
+            app.start_recording()
+            self.assertTrue(app.is_recording)
+            # Buffer da nova sessão começa totalmente limpo
+            self.assertEqual(app.transcript_buffer, [])
+            mock_clear.assert_called_once()
+
+        # Nova fala chega para a Sessão 2
+        app.on_final_transcript("Como funciona o Garbage Collector em Go?")
+        self.assertEqual(app.transcript_buffer, ["Como funciona o Garbage Collector em Go?"])
+
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.Transcriber")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_gravar_and_parar_button_idempotence(self, *mocks):
+        """Valida contratos dos botões independentes Gravar e Parar."""
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+
+        # PARAR sem estar gravando é no-op seguro
+        self.assertFalse(app.is_recording)
+        app.stop_recording()
+        self.assertFalse(app.is_recording)
+
+        # GRAVAR inicia gravação
+        app.start_recording()
+        self.assertTrue(app.is_recording)
+        epoch = app._recording_epoch
+
+        # GRAVAR enquanto já está gravando é no-op seguro (não reinicia nem duplica)
+        app.start_recording()
+        self.assertTrue(app.is_recording)
+        self.assertEqual(app._recording_epoch, epoch)
+
+        # PARAR durante gravação encerra sessão sem disparar LLM
+        with patch.object(app, "respond_now") as mock_respond:
+            app.stop_recording()
+            self.assertFalse(app.is_recording)
+            mock_respond.assert_not_called()
+
+        # RESPONDER dispara LLM
+        app.transcript_buffer = ["Explique polimorfismo em TypeScript"]
+        with patch.object(app, "_process_llm_stream") as mock_stream:
+            app.respond_now()
+            self.assertFalse(app.is_recording)
 
 
 if __name__ == "__main__":
