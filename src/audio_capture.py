@@ -3,9 +3,11 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
+
+from audio_buffer import AudioCaptureState, PreRollAudioBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ else:
 class AudioCapture:
     """
     Captura de áudio do sistema multiplataforma (Windows WASAPI loopback e Linux PipeWire/PulseAudio).
-    Envia chunks de áudio PCM para uma callback assíncrona.
+    Envia chunks de áudio PCM para uma callback assíncrona e gerencia o buffer circular de pré-roll.
     """
 
     def __init__(
@@ -36,6 +38,7 @@ class AudioCapture:
         chunk_duration: float = 0.1,
         device_index: Optional[int | str] = None,
         device_name: Optional[str] = None,
+        pre_roll_seconds: float = 5.0,
     ) -> None:
         self.audio_callback = audio_callback
         self.sample_rate = sample_rate
@@ -44,6 +47,15 @@ class AudioCapture:
         self.device_name = device_name
         self.is_running = False
         self._current_loop: Optional[asyncio.AbstractEventLoop] = None
+
+        self.state = AudioCaptureState.PRE_ROLL
+        self.pre_roll_buffer = PreRollAudioBuffer(
+            duration_seconds=pre_roll_seconds,
+            sample_rate=self.sample_rate,
+            chunk_frames=self.chunk_size,
+            channels=1,
+            sample_width=2,
+        )
 
         # Recursos Windows
         self._pa: Optional[any] = None
