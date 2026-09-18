@@ -296,26 +296,25 @@ class CopilotApp:
             self.transcriber.send_audio(data)
 
     def on_interim_transcript(self, text: str) -> None:
-        """Callback para transcrições parciais - concatena ao buffer existente e exibe na UI com highlight de pergunta."""
+        """Callback para transcrições parciais - concatena ao buffer provisório, cancela timers ativos e NÃO confirma pergunta."""
         if not self.is_recording:
             return
+
+        # Fala em andamento: cancela imediatamente qualquer timer de auto-trigger pendente
+        self._cancel_auto_trigger()
 
         current_full = " ".join(self.transcript_buffer + [text]).strip()
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.ui.update_transcription, current_full, False)
+            if self.config_manager.question_detection_enabled:
+                self.loop.call_soon_threadsafe(self.ui.set_question_detected, False)
         else:
             self.ui.update_transcription(current_full, is_final=False)
-
-        # Atualiza o realce visual HUD se habilitado nas configurações
-        if self.config_manager.question_detection_enabled:
-            detection = self.question_detector.detect(current_full)
-            if self.loop and self.loop.is_running():
-                self.loop.call_soon_threadsafe(self.ui.set_question_detected, detection.is_question)
-            else:
-                self.ui.set_question_detected(detection.is_question)
+            if self.config_manager.question_detection_enabled:
+                self.ui.set_question_detected(False)
 
     def on_final_transcript(self, text: str) -> None:
-        """Callback para sentenças finalizadas - adiciona ao buffer, atualiza UI e dispara auto-trigger se aplicável."""
+        """Callback para sentenças finalizadas - autoridade única para confirmação de pergunta e agendamento de auto-trigger."""
         if not self.is_recording:
             return
 
@@ -335,9 +334,11 @@ class CopilotApp:
                 else:
                     self.ui.set_question_detected(detection.is_question)
 
-                # Se a pergunta for confirmada e o auto-trigger estiver ativo nas configurações
+                # Auto-trigger é agendado EXCLUSIVAMENTE em transcrição final com pergunta confirmada
                 if detection.is_question and self.config_manager.auto_trigger_enabled:
                     self._schedule_auto_trigger()
+                else:
+                    self._cancel_auto_trigger()
 
     def _schedule_auto_trigger(self) -> None:
         """Agenda o auto-trigger debounced após silêncio configurado."""
