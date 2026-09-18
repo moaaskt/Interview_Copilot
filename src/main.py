@@ -48,6 +48,8 @@ class CopilotApp:
         self.config_manager = ConfigManager()
 
         self.ui = CopilotUI(
+            on_start_recording=self.start_recording,
+            on_stop_recording=self.stop_recording,
             on_toggle_recording=self.toggle_recording,
             on_respond_now=self.respond_now,
             on_clear=self.clear_session,
@@ -108,16 +110,15 @@ class CopilotApp:
         # Motor determinístico de detecção de perguntas
         self.question_detector = QuestionDetector()
 
-        # Estado da gravação e buffer de transcrição consolidada
+        # Estado da gravação e controle de epoch de isolamento de sessão
         self.is_recording = False
+        self._recording_epoch = 0
         self.transcript_buffer: list[str] = []
 
     def on_quick_question(self, question: str) -> None:
         """Manipula clique em pergunta rápida pré-configurada."""
         if self.is_recording:
-            self.is_recording = False
-            self.audio_capture.stop_recording()
-            self.ui.set_recording_state(False)
+            self.stop_recording()
 
         self.transcript_buffer = [question]
         self.ui.update_transcription(question, is_final=True)
@@ -206,16 +207,37 @@ class CopilotApp:
             task.cancel()
             self.auto_trigger_task = None
 
-    def toggle_recording(self) -> None:
-        """Alterna entre gravar pergunta e parar para responder."""
+    def start_recording(self) -> None:
+        """Inicia uma nova captura de áudio caso nenhuma gravação esteja ativa."""
+        if self.is_recording:
+            logger.info("Comando GRAVAR ignorado: gravação já está em andamento.")
+            return
+        self._start_recording()
+
+    def stop_recording(self) -> None:
+        """Encerra a gravação ativa sem disparar a resposta automaticamente."""
         if not self.is_recording:
-            self._start_recording()
+            logger.info("Comando PARAR ignorado: nenhuma gravação ativa.")
+            return
+
+        self._cancel_auto_trigger()
+        self.is_recording = False
+        self._recording_epoch += 1  # Invalida mensagens residuais em trânsito
+        self.audio_capture.stop_recording()
+        self.ui.set_recording_state(False)
+        logger.info("⏹ Gravação pausada/finalizada pelo usuário.")
+
+    def toggle_recording(self) -> None:
+        """Alterna entre iniciar e parar gravação (compatibilidade com atalhos de teclado)."""
+        if not self.is_recording:
+            self.start_recording()
         else:
-            self._stop_and_respond()
+            self.stop_recording()
 
     def _start_recording(self) -> None:
-        """Inicia uma nova rodada de gravação para a pergunta descarregando o pré-áudio retido se habilitado."""
+        """Inicia uma nova rodada de gravação isolada, limpando o buffer e descartando resíduos."""
         self._cancel_auto_trigger()
+        self._recording_epoch += 1  # Novo identificador monotônico de sessão
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_recording_state(True)
@@ -237,11 +259,7 @@ class CopilotApp:
 
     def _stop_and_respond(self) -> None:
         """Para a gravação e envia o texto consolidado para a IA."""
-        self._cancel_auto_trigger()
-        self.is_recording = False
-        self.audio_capture.stop_recording()
-        self.ui.set_recording_state(False)
-        logger.info("⏹ Gravação finalizada.")
+        self.stop_recording()
         self.respond_now()
 
     def respond_now(self) -> None:
@@ -250,9 +268,7 @@ class CopilotApp:
 
         # Se ainda estiver gravando, encerra a captura
         if self.is_recording:
-            self.is_recording = False
-            self.audio_capture.stop_recording()
-            self.ui.set_recording_state(False)
+            self.stop_recording()
 
         # Prioriza o buffer acumulado; se vazio, pega o texto atualmente digitado/exibido na UI
         consolidated_question = " ".join(self.transcript_buffer).strip()
@@ -280,9 +296,8 @@ class CopilotApp:
         """Limpa dados da tela e cancela qualquer processamento pendente."""
         self._cancel_auto_trigger()
         if self.is_recording:
-            self.is_recording = False
-            self.audio_capture.stop_recording()
-            self.ui.set_recording_state(False)
+            self.stop_recording()
+        self._recording_epoch += 1  # Invalida mensagens em trânsito
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_question_detected(False)
