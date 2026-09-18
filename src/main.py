@@ -70,6 +70,9 @@ class CopilotApp:
             on_interim_transcript=self.on_interim_transcript,
             on_final_transcript=self.on_final_transcript,
             on_connection_change=self.on_connection_change,
+            language=self.config_manager.transcription_language,
+            keywords=self.config_manager.get_combined_keywords(),
+            endpointing=self.config_manager.transcription_endpointing_ms,
         )
         self.audio_capture = AudioCapture(
             audio_callback=self.on_audio_data,
