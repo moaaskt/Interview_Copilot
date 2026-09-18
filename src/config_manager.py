@@ -10,6 +10,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "audio": {
         "device_index": None,
         "device_name": "Padrão do Sistema",
+        "pre_roll_seconds": 5.0,
     },
     "llm": {
         "response_style": "direta",  # "direta", "tecnica", "star"
@@ -127,6 +128,10 @@ class ConfigManager:
     @property
     def audio_device_name(self) -> str:
         return self._config.get("audio", {}).get("device_name", "Padrão do Sistema")
+
+    @property
+    def pre_roll_seconds(self) -> float:
+        return float(self._config.get("audio", {}).get("pre_roll_seconds", 5.0))
 
     @property
     def response_style(self) -> str:
