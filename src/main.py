@@ -226,6 +226,8 @@ class CopilotApp:
         self.is_recording = False
         self._recording_epoch += 1  # Invalida mensagens residuais em trânsito
         self.audio_capture.stop_recording()
+        if hasattr(self, "transcriber") and self.transcriber:
+            self.transcriber.finalize()
         self.ui.set_recording_state(False)
         logger.info("⏹ Gravação pausada/finalizada pelo usuário.")
 
@@ -244,6 +246,9 @@ class CopilotApp:
         self.ui.clear_all()
         self.ui.set_recording_state(True)
         self.ui.set_question_detected(False)
+
+        if hasattr(self, "transcriber") and self.transcriber:
+            self.transcriber.finalize()
 
         pre_roll_chunks = self.audio_capture.start_recording()
         if self.config_manager.pre_roll_enabled and pre_roll_chunks:
@@ -300,6 +305,10 @@ class CopilotApp:
         if self.is_recording:
             self.stop_recording()
         self._recording_epoch += 1  # Invalida mensagens em trânsito
+        if hasattr(self, "audio_capture") and hasattr(self.audio_capture, "pre_roll_buffer"):
+            self.audio_capture.pre_roll_buffer.clear()
+        if hasattr(self, "transcriber") and self.transcriber:
+            self.transcriber.finalize()
         self.transcript_buffer.clear()
         self.ui.clear_all()
         self.ui.set_question_detected(False)
@@ -323,7 +332,7 @@ class CopilotApp:
                 self.ui.set_status("● Pronto", "#A6ADC8")
             logger.info("Deepgram conectado e operacional.")
 
-    def on_audio_data(self, data: bytes) -> None:
+    def on_audio_data(self, data: bytes, is_recording: bool = True) -> None:
         """Callback chamada a cada chunk de áudio capturado. Calcula RMS para o VU-meter e envia áudio se gravando."""
         try:
             samples = np.frombuffer(data, dtype=np.int16)
@@ -336,7 +345,7 @@ class CopilotApp:
         else:
             self.ui.update_audio_level(rms)
 
-        if self.is_recording:
+        if self.is_recording and is_recording:
             self.transcriber.send_audio(data)
 
     def on_interim_transcript(self, text: str) -> None:

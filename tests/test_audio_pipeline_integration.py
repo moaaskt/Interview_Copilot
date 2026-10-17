@@ -288,6 +288,55 @@ class TestAudioPipelineIntegration(unittest.TestCase):
             app.respond_now()
             self.assertFalse(app.is_recording)
 
+    @patch("main.CopilotUI")
+    @patch("main.LLMService")
+    @patch("main.AudioCapture")
+    @patch("main.HotkeyManager")
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_transcriber_finalize_called_on_stop_and_clear(self, *mocks):
+        """Valida que finalize() é chamado em stop_recording, _start_recording e clear_session para descarregar o decodificador."""
+        app = CopilotApp()
+        app.loop = MagicMock()
+        app.loop.is_running.return_value = True
+
+        with patch.object(app.transcriber, "finalize") as mock_finalize:
+            app.start_recording()
+            # Ao iniciar uma nova sessão, finalize é chamado para garantir decoder limpo
+            mock_finalize.assert_called()
+
+        with patch.object(app.transcriber, "finalize") as mock_finalize:
+            app.stop_recording()
+            # Ao parar gravação, finalize é chamado para descarregar buffers do Deepgram
+            mock_finalize.assert_called_once()
+
+        with patch.object(app.transcriber, "finalize") as mock_finalize:
+            app.clear_session()
+            # Ao limpar sessão, finalize é chamado
+            mock_finalize.assert_called_once()
+
+    @patch("main.load_dotenv")
+    @patch.dict(os.environ, {"DEEPGRAM_API_KEY": "dummy_dg", "GROQ_API_KEY": "dummy_groq"})
+    def test_on_audio_data_discards_pre_roll_chunks_even_if_recording_active(self, *mocks):
+        """Valida que chunks capturados em PRE_ROLL state nunca são transmitidos ao transcritor."""
+        app = CopilotApp()
+        sent_chunks = []
+        mock_transcriber = MagicMock()
+        mock_transcriber.send_audio.side_effect = lambda c: sent_chunks.append(c)
+        app.transcriber = mock_transcriber
+        app.is_recording = True
+
+        # Chunk capturado no estado PRE_ROLL (is_recording=False)
+        old_chunk = b"\x01\x00" * 1600
+        app.on_audio_data(old_chunk, is_recording=False)
+        self.assertEqual(len(sent_chunks), 0, "Chunk de pré-roll não deveria ter sido enviado via stream ao vivo")
+
+        # Chunk capturado no estado RECORDING (is_recording=True)
+        live_chunk = b"\x02\x00" * 1600
+        app.on_audio_data(live_chunk, is_recording=True)
+        self.assertEqual(len(sent_chunks), 1)
+        self.assertEqual(sent_chunks[0], live_chunk)
+
 
 if __name__ == "__main__":
     unittest.main()
