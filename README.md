@@ -1,12 +1,12 @@
 # ⚡ Interview Copilot
 
-Assistente inteligente em tempo real para entrevistas técnicas. O **Interview Copilot** captura o áudio do sistema (loopback/monitor de saída do PulseAudio/PipeWire no Linux), realiza transcrição de fala contínua de altíssima precisão via WebSocket da **Deepgram** e gera respostas instantâneas em streaming através da API de ultra-alta velocidade da **Groq (`llama3-8b-8192`)**, exibindo tudo em uma interface overlay flutuante semi-transparente desenvolvida em **CustomTkinter**.
+Assistente inteligente em tempo real. O **Interview Copilot** captura o áudio do sistema (loopback/monitor de saída do PulseAudio/PipeWire no Linux), realiza transcrição de fala contínua de altíssima precisão via WebSocket da **Deepgram** e gera respostas instantâneas em streaming através da API de ultra-alta velocidade da **Groq (`llama3-8b-8192`)**, exibindo tudo em uma interface overlay flutuante semi-transparente desenvolvida em **CustomTkinter**.
 
 ---
 
 ## 🚀 Funcionalidades
 
-- **Captura de Áudio Interno (Loopback)**: Escuta diretamente a saída de áudio do sistema (reuniões no Google Meet, Zoom, Teams, Discord, etc.) sem necessidade de microfone externo apontado para caixas de som.
+- **Captura de Áudio Interno (Loopback)**: Escuta diretamente a saída de áudio do sistema sem necessidade de microfone externo apontado para caixas de som.
 - **Transcrição Live & Baixa Latência**: Integração via WebSocket com modelo Deepgram `nova-2` com suporte a resultados parciais e finalizações de sentença em tempo real.
 - **Respostas de IA em Streaming**: Respostas geradas token a token com `llama3-8b-8192` (Groq), otimizadas para leitura rápida (máximo 3 a 4 frases, método STAR e foco prático).
 - **Overlay Flutuante & Transparente**: Janela moderna e arrastável que permanece no topo das outras aplicações sem roubar o foco, com opacidade configurável.
