@@ -254,10 +254,11 @@ class AudioCapture:
                         logger.debug(f"[Windows Audio] Erro na conversão de áudio: {e}")
                         out_bytes = in_data
 
-                    if self.state == AudioCaptureState.PRE_ROLL:
+                    is_recording_chunk = (self.state == AudioCaptureState.RECORDING)
+                    if not is_recording_chunk:
                         self.pre_roll_buffer.push(out_bytes)
 
-                    loop.call_soon_threadsafe(self.audio_callback, out_bytes)
+                    loop.call_soon_threadsafe(self.audio_callback, out_bytes, is_recording_chunk)
                 return (None, pyaudio.paContinue)
 
             self._win_stream = self._pa.open(
@@ -390,9 +391,10 @@ class AudioCapture:
                 if self.is_running and indata is not None:
                     # Converte o buffer PCM int16 para bytes
                     data_bytes = bytes(indata)
-                    if self.state == AudioCaptureState.PRE_ROLL:
+                    is_recording_chunk = (self.state == AudioCaptureState.RECORDING)
+                    if not is_recording_chunk:
                         self.pre_roll_buffer.push(data_bytes)
-                    loop.call_soon_threadsafe(self.audio_callback, data_bytes)
+                    loop.call_soon_threadsafe(self.audio_callback, data_bytes, is_recording_chunk)
 
             self._linux_stream = sd.InputStream(
                 device=device_index,
@@ -423,8 +425,9 @@ class AudioCapture:
         return self.pre_roll_buffer.drain_all()
 
     def stop_recording(self) -> None:
-        """Transiciona o estado de captura de RECORDING de volta para PRE_ROLL."""
+        """Transiciona o estado de captura de RECORDING de volta para PRE_ROLL e purga o buffer."""
         self.state = AudioCaptureState.PRE_ROLL
+        self.pre_roll_buffer.clear()
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         """Inicia a captura de áudio dependendo da plataforma."""

@@ -25,6 +25,8 @@ class CopilotUI(ctk.CTk):
     def __init__(
         self,
         title: str = "Interview Copilot",
+        on_start_recording: Optional[Callable[[], None]] = None,
+        on_stop_recording: Optional[Callable[[], None]] = None,
         on_toggle_recording: Optional[Callable[[], None]] = None,
         on_respond_now: Optional[Callable[[], None]] = None,
         on_clear: Optional[Callable[[], None]] = None,
@@ -33,6 +35,8 @@ class CopilotUI(ctk.CTk):
         on_device_change: Optional[Callable[[Optional[int], str], None]] = None,
         on_llm_change: Optional[Callable[[str, Optional[str]], None]] = None,
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
+        on_question_detection_change: Optional[Callable[[bool], None]] = None,
+        on_pre_roll_change: Optional[Callable[[bool], None]] = None,
     ) -> None:
         super().__init__()
 
@@ -45,6 +49,8 @@ class CopilotUI(ctk.CTk):
         self.attributes("-topmost", True)
         self.attributes("-alpha", 0.92)  # Fundo escuro semi-transparente premium
 
+        self.on_start_recording = on_start_recording
+        self.on_stop_recording = on_stop_recording
         self.on_toggle_recording = on_toggle_recording
         self.on_respond_now = on_respond_now
         self.on_clear = on_clear
@@ -54,6 +60,8 @@ class CopilotUI(ctk.CTk):
         self.on_device_change = on_device_change
         self.on_llm_change = on_llm_change
         self.on_hotkeys_change = on_hotkeys_change
+        self.on_question_detection_change = on_question_detection_change
+        self.on_pre_roll_change = on_pre_roll_change
 
         self.settings_window: Optional[SettingsWindow] = None
 
@@ -236,21 +244,33 @@ class CopilotUI(ctk.CTk):
         for widget in (self.header_frame, self.title_label, self.status_badge, self.audio_meter_label):
             self._bind_drag_events(widget)
 
-        # Barra de Controles (Gravar / Responder / Limpar)
+        # Barra de Controles (Gravar / Parar / Responder / Limpar)
         self.controls_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.controls_frame.pack(fill="x", padx=12, pady=(6, 4))
 
         self.record_btn = ctk.CTkButton(
             self.controls_frame,
             text="🎙 Gravar",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#A6E3A1",
             text_color="#11111B",
             hover_color="#94E2D5",
             height=32,
-            command=self._handle_toggle_recording
+            command=self._handle_start_recording
         )
-        self.record_btn.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.record_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        self.stop_btn = ctk.CTkButton(
+            self.controls_frame,
+            text="⏹ Parar",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#313244",
+            text_color="#A6ADC8",
+            hover_color="#45475A",
+            height=32,
+            command=self._handle_stop_recording
+        )
+        self.stop_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
 
         self.respond_btn = ctk.CTkButton(
             self.controls_frame,
@@ -262,7 +282,7 @@ class CopilotUI(ctk.CTk):
             height=32,
             command=self._handle_respond_now
         )
-        self.respond_btn.pack(side="left", padx=(0, 6))
+        self.respond_btn.pack(side="left", padx=(0, 4))
 
         self.clear_btn = ctk.CTkButton(
             self.controls_frame,
@@ -271,7 +291,7 @@ class CopilotUI(ctk.CTk):
             fg_color="#313244",
             text_color="#CDD6F4",
             hover_color="#45475A",
-            width=85,
+            width=75,
             height=32,
             command=self._handle_clear
         )
@@ -482,6 +502,8 @@ class CopilotUI(ctk.CTk):
             on_llm_change=self.on_llm_change,
             on_hotkeys_change=self.apply_hotkeys,
             on_quick_questions_change=self._on_quick_questions_updated,
+            on_question_detection_change=self.on_question_detection_change,
+            on_pre_roll_change=self.on_pre_roll_change,
         )
         return "break"
 
@@ -541,8 +563,9 @@ class CopilotUI(ctk.CTk):
         if not self._is_recording:
             self.record_btn.configure(text=f"🎙 Gravar{rec_label}")
         else:
-            self.record_btn.configure(text=f"⏹ Parar{rec_label}")
+            self.record_btn.configure(text=f"🎙 Gravando{rec_label}")
 
+        self.stop_btn.configure(text="⏹ Parar")
         self.respond_btn.configure(text=f"⚡ Responder{resp_label}")
         self.clear_btn.configure(text=f"🗑 Limpar{clear_label}")
 
@@ -688,6 +711,20 @@ class CopilotUI(ctk.CTk):
             self.after_idle(self._build_quick_prompt_buttons)
         return "break"
 
+    def _handle_start_recording(self, event=None) -> Optional[str]:
+        if self.on_start_recording:
+            self.on_start_recording()
+        elif self.on_toggle_recording and not self._is_recording:
+            self.on_toggle_recording()
+        return "break"
+
+    def _handle_stop_recording(self, event=None) -> Optional[str]:
+        if self.on_stop_recording:
+            self.on_stop_recording()
+        elif self.on_toggle_recording and self._is_recording:
+            self.on_toggle_recording()
+        return "break"
+
     def _handle_toggle_recording(self, event=None) -> Optional[str]:
         if self.on_toggle_recording:
             self.on_toggle_recording()
@@ -715,13 +752,18 @@ class CopilotUI(ctk.CTk):
         return raw
 
     def set_recording_state(self, is_recording: bool) -> None:
-        """Atualiza visualmente o botão e badge de status de gravação."""
+        """Atualiza visualmente os botões de gravação/parada e badge de status."""
         self._is_recording = is_recording
         k_rec = self._format_hotkey_for_button(self._current_hotkeys.get("toggle_recording", "<Control-space>"))
         rec_label = f" [{k_rec}]" if k_rec else ""
         if is_recording:
             self.record_btn.configure(
-                text=f"⏹ Parar{rec_label}",
+                text=f"🎙 Gravando{rec_label}",
+                fg_color="#313244",
+                text_color="#A6ADC8",
+                hover_color="#45475A"
+            )
+            self.stop_btn.configure(
                 fg_color="#F38BA8",
                 text_color="#11111B",
                 hover_color="#EBA0AC"
@@ -736,6 +778,11 @@ class CopilotUI(ctk.CTk):
                 fg_color="#A6E3A1",
                 text_color="#11111B",
                 hover_color="#94E2D5"
+            )
+            self.stop_btn.configure(
+                fg_color="#313244",
+                text_color="#A6ADC8",
+                hover_color="#45475A"
             )
             self.status_badge.configure(
                 text="● Pronto",
