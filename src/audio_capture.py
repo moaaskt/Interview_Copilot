@@ -227,14 +227,31 @@ class AudioCapture:
             except Exception as e:
                 logger.warning(f"[Windows Keep-Alive] Não foi possível iniciar stream silencioso keep-alive: {e}")
 
-            # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
-            native_channels = int(device_info.get("maxInputChannels", 2)) or 1
-            native_rate = int(device_info.get("defaultSampleRate", 48000)) or self.sample_rate
-            target_rate = self.sample_rate
+            # Modo automático: sem seleção explícita, monitora TODAS as saídas loopback e
+            # encaminha a que estiver realmente com áudio (o Meet pode tocar em outro
+            # dispositivo que não o padrão do Windows).
+            explicit = (self.device_index is not None) or (
+                bool(self.device_name) and self.device_name != "Padrão do Sistema"
+            )
+            candidates = [device_info]
+            if not explicit:
+                try:
+                    candidates += [
+                        lb for lb in self._pa.get_loopback_device_info_generator()
+                        if lb["index"] != device_info["index"]
+                    ]
+                except Exception as e:
+                    logger.debug(f"[Windows] Falha ao listar loopbacks extras: {e}")
 
-            frames_per_buffer = int(native_rate * (self.chunk_size / self.sample_rate))
+            import time as _time
+            levels: dict = {}
+            active = {"index": device_info["index"]}
+            self._extra_streams = []
 
-            def pcm_callback(in_data, frame_count, time_info, status):
+            def make_callback(dev, native_channels, native_rate):
+              target_rate = self.sample_rate
+
+              def pcm_callback(in_data, frame_count, time_info, status):
                 if self.is_running and in_data:
                     try:
                         samples = np.frombuffer(in_data, dtype=np.int16)
@@ -250,9 +267,22 @@ class AudioCapture:
                                 samples = np.interp(indices, np.arange(len(samples)), samples).astype(np.int16)
 
                         out_bytes = samples.tobytes()
+                        rms = float(np.sqrt(np.mean(samples.astype(np.float32) ** 2))) if len(samples) else 0.0
                     except Exception as e:
                         logger.debug(f"[Windows Audio] Erro na conversão de áudio: {e}")
                         out_bytes = in_data
+                        rms = 0.0
+
+                    now = _time.monotonic()
+                    levels[dev["index"]] = (rms, now)
+                    if len(candidates) > 1 and dev["index"] != active["index"]:
+                        cur_rms, cur_t = levels.get(active["index"], (0.0, 0.0))
+                        cur_silent = (now - cur_t) > 0.5 or cur_rms < 20
+                        if rms > 50 and (cur_silent or rms > cur_rms * 2):
+                            active["index"] = dev["index"]
+                            logger.info(f"[Windows] Áudio detectado em [{dev['index']}] {dev['name']}; alternando captura.")
+                    if dev["index"] != active["index"]:
+                        return (None, pyaudio.paContinue)
 
                     is_recording_chunk = (self.state == AudioCaptureState.RECORDING)
                     if not is_recording_chunk:
@@ -260,18 +290,33 @@ class AudioCapture:
 
                     loop.call_soon_threadsafe(self.audio_callback, out_bytes, is_recording_chunk)
                 return (None, pyaudio.paContinue)
+              return pcm_callback
 
-            self._win_stream = self._pa.open(
-                format=pyaudio.paInt16,
-                channels=native_channels,
-                rate=native_rate,
-                input=True,
-                input_device_index=device_info["index"],
-                frames_per_buffer=frames_per_buffer,
-                stream_callback=pcm_callback,
-            )
-            self._win_stream.start_stream()
-            logger.info(f"[Windows] Captura WASAPI iniciada com sucesso ({native_rate}Hz, {native_channels} canais -> reamostrado para {target_rate}Hz mono)")
+            for i, dev in enumerate(candidates):
+                try:
+                    # WASAPI loopback exige canais e taxa de amostragem nativos do dispositivo
+                    n_ch = int(dev.get("maxInputChannels", 2)) or 1
+                    n_rate = int(dev.get("defaultSampleRate", 48000)) or self.sample_rate
+                    fpb = int(n_rate * (self.chunk_size / self.sample_rate))
+                    stream = self._pa.open(
+                        format=pyaudio.paInt16,
+                        channels=n_ch,
+                        rate=n_rate,
+                        input=True,
+                        input_device_index=dev["index"],
+                        frames_per_buffer=fpb,
+                        stream_callback=make_callback(dev, n_ch, n_rate),
+                    )
+                    stream.start_stream()
+                    if i == 0:
+                        self._win_stream = stream
+                    else:
+                        self._extra_streams.append(stream)
+                    logger.info(f"[Windows] Captura WASAPI iniciada em [{dev['index']}] {dev['name']} ({n_rate}Hz, {n_ch}ch -> {self.sample_rate}Hz mono)")
+                except Exception as e:
+                    if i == 0:
+                        raise
+                    logger.debug(f"[Windows] Loopback extra [{dev.get('index')}] indisponível: {e}")
         except Exception as e:
             logger.error(f"[Windows] Erro ao inicializar captura WASAPI: {e}")
             self.stop()
@@ -468,6 +513,14 @@ class AudioCapture:
                 logger.error(f"Erro ao fechar stream keep-alive Windows: {e}")
             finally:
                 self._keepalive_stream = None
+
+        for s in getattr(self, "_extra_streams", []):
+            try:
+                s.stop_stream()
+                s.close()
+            except Exception:
+                pass
+        self._extra_streams = []
 
         if self._win_stream:
             try:
