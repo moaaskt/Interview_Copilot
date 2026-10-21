@@ -1,4 +1,5 @@
 # ⚡ Interview Copilot
+![Desenvolvimento](https://img.shields.io/badge/Desenvolvimento-Cont%C3%ADnuo-FF9800?style=for-the-badge&logo=github&logoColor=white)
 
 Assistente inteligente em tempo real. O **Interview Copilot** captura o áudio do sistema (loopback/monitor de saída do PulseAudio/PipeWire no Linux), realiza transcrição de fala contínua de altíssima precisão via WebSocket da **Deepgram** e gera respostas instantâneas em streaming através da API de ultra-alta velocidade da **Groq (`llama3-8b-8192`)**, exibindo tudo em uma interface overlay flutuante semi-transparente desenvolvida em **CustomTkinter**.
 
