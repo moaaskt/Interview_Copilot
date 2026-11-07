@@ -127,7 +127,7 @@ class SettingsWindow(ctk.CTkToplevel):
         on_quick_questions_change: Optional[Callable[[List[str]], None]] = None,
         on_question_detection_change: Optional[Callable[[bool], None]] = None,
         on_pre_roll_change: Optional[Callable[[bool], None]] = None,
-        on_api_keys_change: Optional[Callable[[str, str], None]] = None,
+        on_api_keys_change: Optional[Callable[..., None]] = None,
     ) -> None:
         super().__init__(parent)
 
@@ -142,8 +142,8 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_api_keys_change = on_api_keys_change
 
         self.title("Configurações - Interview Copilot")
-        self.geometry("620x500")
-        self.minsize(560, 440)
+        self.geometry("620x560")
+        self.minsize(560, 500)
         self.attributes("-topmost", True)
         self.configure(fg_color="#181825")
 
@@ -747,14 +747,14 @@ class SettingsWindow(ctk.CTkToplevel):
         self.after(2000, lambda: self.save_quick_btn.configure(text="💾 Salvar Perguntas"))
 
     # ==========================================
-    # ABA 5: CHAVES DE API (GROQ & GEMINI)
+    # ABA 5: CHAVES DE API (DEEPGRAM, GROQ & GEMINI)
     # ==========================================
     def _build_api_keys_tab(self) -> None:
         tab = self.tab_api_keys
 
         lbl_title = ctk.CTkLabel(
             tab,
-            text="Credenciais dos Provedores de IA (Groq & Google Gemini):",
+            text="Credenciais dos Provedores (Deepgram, Groq & Google Gemini):",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#A6ADC8"
         )
@@ -767,6 +767,32 @@ class SettingsWindow(ctk.CTkToplevel):
             text_color="#89B4FA"
         )
         lbl_help.pack(anchor="w", padx=12, pady=(0, 12))
+
+        # Container Chave Deepgram
+        deepgram_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
+        deepgram_box.pack(fill="x", padx=12, pady=(0, 10))
+
+        lbl_deepgram = ctk.CTkLabel(
+            deepgram_box,
+            text="🎙 Chave de API da Deepgram (Transcrição de Áudio / STT):",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#CDD6F4"
+        )
+        lbl_deepgram.pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.deepgram_key_entry = ctk.CTkEntry(
+            deepgram_box,
+            height=30,
+            fg_color="#181825",
+            border_color="#313244",
+            text_color="#CDD6F4",
+            placeholder_text="Token Deepgram...",
+            show="•",
+            font=ctk.CTkFont(size=11)
+        )
+        self.deepgram_key_entry.pack(fill="x", padx=12, pady=(0, 10))
+        if self.config_manager.deepgram_api_key:
+            self.deepgram_key_entry.insert(0, self.config_manager.deepgram_api_key)
 
         # Container Chave Groq
         groq_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
@@ -850,18 +876,20 @@ class SettingsWindow(ctk.CTkToplevel):
     def _toggle_show_api_keys(self) -> None:
         """Alterna entre exibir caracteres reais ou máscara nas entradas de chaves de API."""
         mask = "" if self.show_keys_switch.get() else "•"
+        self.deepgram_key_entry.configure(show=mask)
         self.groq_key_entry.configure(show=mask)
         self.gemini_key_entry.configure(show=mask)
 
     def _save_api_keys(self) -> None:
-        """Persiste as chaves de API da Groq e do Gemini e aciona atualização imediata em runtime."""
+        """Persiste as chaves de API da Deepgram, Groq e Gemini e aciona atualização imediata em runtime."""
+        deepgram_key = self.deepgram_key_entry.get().strip()
         groq_key = self.groq_key_entry.get().strip()
         gemini_key = self.gemini_key_entry.get().strip()
 
-        self.config_manager.set_api_keys(groq_key, gemini_key)
+        self.config_manager.set_api_keys(groq_key, gemini_key, deepgram_key)
         if self.on_api_keys_change:
-            self.on_api_keys_change(groq_key, gemini_key)
+            self.on_api_keys_change(groq_key, gemini_key, deepgram_key)
 
-        logger.info("Chaves de API (Groq e Gemini) salvas pela interface.")
+        logger.info("Chaves de API (Deepgram, Groq e Gemini) salvas pela interface.")
         self.save_api_keys_btn.configure(text="✔ Chaves Salvas!")
         self.after(2000, lambda: self.save_api_keys_btn.configure(text="💾 Salvar Chaves"))

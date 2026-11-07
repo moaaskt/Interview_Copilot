@@ -65,6 +65,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "api_keys": {
         "groq_api_key": "",
         "gemini_api_key": "",
+        "deepgram_api_key": "",
     },
 }
 
@@ -171,19 +172,39 @@ class ConfigManager:
             return str(saved).strip()
         return os.getenv("GEMINI_API_KEY", "").strip()
 
-    def set_api_keys(self, groq_key: str, gemini_key: str, sync_env: bool = True) -> None:
-        """Salva e sincroniza as chaves de API da Groq e do Gemini em disco e no ambiente."""
+    @property
+    def deepgram_api_key(self) -> str:
+        saved = self._config.get("api_keys", {}).get("deepgram_api_key", "")
+        if saved and str(saved).strip():
+            return str(saved).strip()
+        return os.getenv("DEEPGRAM_API_KEY", "").strip()
+
+    def set_api_keys(
+        self,
+        groq_key: str,
+        gemini_key: str,
+        deepgram_key: Optional[str] = None,
+        sync_env: bool = True,
+    ) -> None:
+        """Salva e sincroniza as chaves de API da Groq, do Gemini e da Deepgram em disco e no ambiente."""
         groq_clean = (groq_key or "").strip()
         gemini_clean = (gemini_key or "").strip()
+        if deepgram_key is None:
+            deepgram_clean = str(self._config.get("api_keys", {}).get("deepgram_api_key", "") or "").strip()
+        else:
+            deepgram_clean = (deepgram_key or "").strip()
 
         self._config["api_keys"] = {
             "groq_api_key": groq_clean,
             "gemini_api_key": gemini_clean,
+            "deepgram_api_key": deepgram_clean,
         }
         self.save_config()
 
         os.environ["GROQ_API_KEY"] = groq_clean
         os.environ["GEMINI_API_KEY"] = gemini_clean
+        if deepgram_key is not None:
+            os.environ["DEEPGRAM_API_KEY"] = deepgram_clean
 
         if sync_env and self._is_default_path:
             env_file = self.config_path.parent / ".env"
@@ -192,6 +213,8 @@ class ConfigManager:
                     from dotenv import set_key
                     set_key(str(env_file), "GROQ_API_KEY", groq_clean)
                     set_key(str(env_file), "GEMINI_API_KEY", gemini_clean)
+                    if deepgram_key is not None:
+                        set_key(str(env_file), "DEEPGRAM_API_KEY", deepgram_clean)
                 except Exception as e:
                     logger.warning(f"Não foi possível sincronizar chaves no arquivo .env: {e}")
 

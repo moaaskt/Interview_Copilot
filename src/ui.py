@@ -37,7 +37,7 @@ class CopilotUI(ctk.CTk):
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
         on_question_detection_change: Optional[Callable[[bool], None]] = None,
         on_pre_roll_change: Optional[Callable[[bool], None]] = None,
-        on_api_keys_change: Optional[Callable[[str, str], None]] = None,
+        on_api_keys_change: Optional[Callable[..., None]] = None,
     ) -> None:
         super().__init__()
 
