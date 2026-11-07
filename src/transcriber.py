@@ -28,7 +28,7 @@ class Transcriber:
         keywords: Optional[List[str]] = None,
         endpointing: int = 350,
     ) -> None:
-        self.api_key = api_key
+        self.api_key = (api_key or "").strip()
         self.on_interim_transcript = on_interim_transcript
         self.on_final_transcript = on_final_transcript
         self.on_connection_change = on_connection_change
@@ -46,6 +46,10 @@ class Transcriber:
     async def start(self) -> None:
         """Conecta ao WebSocket da Deepgram e registra os handlers de eventos."""
         self.should_run = True
+        if not self.api_key:
+            logger.warning("DEEPGRAM_API_KEY ausente. Conexão Deepgram aguardando chave de API.")
+            self.is_connected = False
+            return
         try:
             config = DeepgramClientOptions(options={"keepalive": "true"})
             self.client = DeepgramClient(self.api_key, config)
@@ -158,6 +162,39 @@ class Transcriber:
                 logger.info("[Deepgram] Sinal de Finalize enviado com sucesso.")
             except Exception as e:
                 logger.debug(f"[Deepgram] Falha ao enviar finalize: {e}")
+
+    async def _restart_connection(self) -> None:
+        """Encerra a conexão atual e inicia uma nova caso a chave de API esteja presente."""
+        await self.close()
+        if self.api_key:
+            await self.start()
+
+    def update_api_key(
+        self,
+        api_key: Optional[str],
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
+        """Atualiza a chave da Deepgram em tempo de execução e reconecta se o loop estiver ativo."""
+        new_key = (api_key or "").strip()
+        self.api_key = new_key
+
+        target_loop = loop
+        if target_loop is None:
+            try:
+                target_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                target_loop = None
+
+        if target_loop and target_loop.is_running():
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is target_loop:
+                target_loop.create_task(self._restart_connection())
+            else:
+                asyncio.run_coroutine_threadsafe(self._restart_connection(), target_loop)
 
     async def close(self) -> None:
         """Encerra a conexão WebSocket com a Deepgram."""
