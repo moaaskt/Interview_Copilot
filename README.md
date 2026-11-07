@@ -51,7 +51,22 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 2. 🎙️ Painel de Configurações — Aba `Áudio` (`configuraçoes1.png`)
+### 2. ⚡ Resposta Gerada em Tempo Real (`resposta.png`)
+
+<div align="center">
+  <img src="src/public/imagens/resposta.png" alt="Resposta gerada em tempo real pelo Interview Copilot" width="750"/>
+</div>
+
+> **Legenda & O que esta tela faz:**
+> Exemplo prático da aplicação em ação durante a entrevista com o status `● Resposta Concluída`.
+>
+> - **Pergunta Capturada e Confirmada (`✔`)**: Na área **Pergunta Transcrita**, o texto finalizado pelo recrutador (ou disparado pelo atalho de pergunta rápida) é marcado com um ícone de confirmação (`✔ Qual é o seu principal ponto forte?`).
+> - **Monitoramento de Tokens Ativo (`TPM: 2.449 / 7.000 (34%)`)**: A barra de TPM avança em verde proporcionalmente aos tokens gerados na requisição, demonstrando o controle rigoroso da cota de 60 segundos da Groq para garantir que você nunca seja bloqueado por *rate limit*.
+> - **Sugestão da IA em Primeira Pessoa**: Na área **Sugestão da IA (Groq)**, o modelo estruturou uma resposta técnica impecável, sem enrolação, contextualizada com a vivência real do desenvolvedor (citando projetos reais como *Doar Digital*, desafios de idempotência em checkout, concorrência/locks no *MySQL* e filas em *Redis*). O texto é exibido em verde suave de alto contraste (`#50FA7B` / `#A6E3A1`), ideal para leitura imediata sem desviar o foco da câmera.
+
+---
+
+### 3. 🎙️ Painel de Configurações — Aba `Áudio` (`configuraçoes1.png`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes1.png" alt="Configurações de Áudio, VU-Meter, Pré-Roll e Detecção de Perguntas" width="600"/>
@@ -67,7 +82,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 3. 🧠 Painel de Configurações — Aba `IA & Persona` (`configuraçoes2.jpg`)
+### 4. 🧠 Painel de Configurações — Aba `IA & Persona` (`configuraçoes2.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes2.jpg" alt="Configurações de IA, Estilo de Resposta e System Prompt da Persona" width="600"/>
@@ -85,7 +100,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 4. ⌨️ Painel de Configurações — Aba `Atalhos` (`configuraçoes3.jpg`)
+### 5. ⌨️ Painel de Configurações — Aba `Atalhos` (`configuraçoes3.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes3.jpg" alt="Mapeamento Interativo de Teclas de Atalho Globais" width="600"/>
@@ -99,7 +114,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 5. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` (`configuraçoes4.jpg`)
+### 6. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` (`configuraçoes4.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes4.jpg" alt="Editor de Perguntas Rápidas de Entrevista (Quick Prompts)" width="600"/>
