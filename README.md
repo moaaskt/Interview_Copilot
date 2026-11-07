@@ -6,7 +6,7 @@
 ![Groq](https://img.shields.io/badge/LLM-Groq%20%2B%20Gemini%20Fallback-F55036?style=for-the-badge)
 ![UI](https://img.shields.io/badge/UI-CustomTkinter%20HUD-89B4FA?style=for-the-badge)
 
-Assistente inteligente de entrevistas técnicas em tempo real. O **Interview Copilot (`helpIA`)** captura diretamente o áudio interno do sistema (saída de som de chamadas no Google Meet, Zoom, Teams, Discord, etc.), transcreve a fala com baixíssima latência via **Deepgram WebSocket (`nova-2`)** e gera respostas estruturadas em streaming através da **Groq Cloud** (com fallback automático e preventivo para o **Google Gemini**), exibindo tudo em uma interface **HUD Overlay** flutuante, furtiva e sempre no topo.
+Assistente inteligente em tempo real. O **Interview Copilot (`helpIA`)** captura diretamente o áudio interno do sistema (saída de som de chamadas no Google Meet, Zoom, Teams, Discord, etc.), transcreve a fala com baixíssima latência via **Deepgram WebSocket (`nova-2`)** e gera respostas estruturadas em streaming através da **Groq Cloud** (com fallback automático e preventivo para o **Google Gemini**), exibindo tudo em uma interface **HUD Overlay** flutuante, furtiva e sempre no topo.
 
 ---
 
