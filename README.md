@@ -24,7 +24,7 @@ Captura o áudio interno da chamada, transcreve com precisão cirúrgica via **D
 
 Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e o que cada componente faz:
 
-### 1. 🖥️ HUD Overlay Principal (`foto 1.png`)
+### 1. 🖥️ HUD Overlay Principal 
 
 <div align="center">
   <img src="src/public/imagens/foto%201.png" alt="HUD Overlay Principal do Interview Copilot" width="750"/>
@@ -51,7 +51,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 2. ⚡ Resposta Gerada em Tempo Real (`resposta.png`)
+### 2. ⚡ Resposta Gerada em Tempo Real 
 
 <div align="center">
   <img src="src/public/imagens/resposta.png" alt="Resposta gerada em tempo real pelo Interview Copilot" width="750"/>
@@ -66,7 +66,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 3. 🎙️ Painel de Configurações — Aba `Áudio` (`configuraçoes1.png`)
+### 3. 🎙️ Painel de Configurações — Aba `Áudio` 
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes1.png" alt="Configurações de Áudio, VU-Meter, Pré-Roll e Detecção de Perguntas" width="600"/>
@@ -82,7 +82,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 4. 🧠 Painel de Configurações — Aba `IA & Persona` (`configuraçoes2.jpg`)
+### 4. 🧠 Painel de Configurações — Aba `IA & Persona` 
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes2.jpg" alt="Configurações de IA, Estilo de Resposta e System Prompt da Persona" width="600"/>
@@ -100,7 +100,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 5. ⌨️ Painel de Configurações — Aba `Atalhos` (`configuraçoes3.jpg`)
+### 5. ⌨️ Painel de Configurações — Aba `Atalhos` 
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes3.jpg" alt="Mapeamento Interativo de Teclas de Atalho Globais" width="600"/>
@@ -114,7 +114,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 6. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` (`configuraçoes4.jpg`)
+### 6. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` 
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes4.jpg" alt="Editor de Perguntas Rápidas de Entrevista (Quick Prompts)" width="600"/>
@@ -132,7 +132,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 7. 🔑 Painel de Configurações — Aba `Chaves de API` (`apikeyfoto.png`)
+### 7. 🔑 Painel de Configurações — Aba `Chaves de API` 
 
 <div align="center">
   <img src="src/public/imagens/apikeyfoto.png" alt="Configuração de Chaves de API pela Interface Gráfica" width="600"/>
