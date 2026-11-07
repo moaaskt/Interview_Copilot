@@ -13,11 +13,29 @@ from src.main import CopilotApp
 
 class TestSettingsAndQuickPrompts(unittest.TestCase):
     def setUp(self):
+        self._orig_groq_key = os.environ.get("GROQ_API_KEY")
+        self._orig_openai_key = os.environ.get("OPENAI_API_KEY")
+        self._orig_gemini_key = os.environ.get("GEMINI_API_KEY")
         self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json")
         self.temp_file.close()
         self.config_manager = ConfigManager(config_path=self.temp_file.name)
 
     def tearDown(self):
+        if self._orig_groq_key is None:
+            os.environ.pop("GROQ_API_KEY", None)
+        else:
+            os.environ["GROQ_API_KEY"] = self._orig_groq_key
+
+        if self._orig_openai_key is None:
+            os.environ.pop("OPENAI_API_KEY", None)
+        else:
+            os.environ["OPENAI_API_KEY"] = self._orig_openai_key
+
+        if self._orig_gemini_key is None:
+            os.environ.pop("GEMINI_API_KEY", None)
+        else:
+            os.environ["GEMINI_API_KEY"] = self._orig_gemini_key
+
         if os.path.exists(self.temp_file.name):
             try:
                 os.remove(self.temp_file.name)
@@ -184,6 +202,12 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
         app.hotkey_manager = MagicMock()
         app.on_hotkeys_change({"toggle_recording": "<Control-g>"})
         app.hotkey_manager.update_hotkeys.assert_called_with({"toggle_recording": "<Control-g>"})
+
+        # Alteração dinâmica de Chaves de API
+        app.on_api_keys_change("gsk_live", "AIza_live")
+        self.assertEqual(app.groq_key, "gsk_live")
+        self.assertEqual(app.gemini_key, "AIza_live")
+        app.llm_service.update_api_keys.assert_called_with("gsk_live", "AIza_live")
 
     def test_key_capture_parsing_and_formatting(self):
         try:
@@ -414,6 +438,105 @@ class TestSettingsAndQuickPrompts(unittest.TestCase):
             # 6. Valida persistência em disco do estado reativado
             reloaded2 = ConfigManager(config_path=self.temp_file.name)
             self.assertTrue(reloaded2.pre_roll_enabled)
+            sw2.destroy()
+            ui.update()
+        finally:
+            ui.destroy()
+
+    def test_api_keys_config_persistence_and_fallback(self):
+        os.environ["GROQ_API_KEY"] = "env_groq_fallback"
+        os.environ["GEMINI_API_KEY"] = "env_gemini_fallback"
+
+        # 1. Quando JSON está vazio, usa fallback das variáveis de ambiente
+        self.assertEqual(self.config_manager.groq_api_key, "env_groq_fallback")
+        self.assertEqual(self.config_manager.gemini_api_key, "env_gemini_fallback")
+
+        # 2. Salva novas chaves via set_api_keys (com sanitização de espaços)
+        self.config_manager.set_api_keys("  gsk_test_123  ", "  AIza_test_456  ", sync_env=False)
+        self.assertEqual(self.config_manager.groq_api_key, "gsk_test_123")
+        self.assertEqual(self.config_manager.gemini_api_key, "AIza_test_456")
+        self.assertEqual(os.environ.get("GROQ_API_KEY"), "gsk_test_123")
+        self.assertEqual(os.environ.get("GEMINI_API_KEY"), "AIza_test_456")
+
+        # 3. Recarrega do arquivo JSON e confirma persistência
+        reloaded = ConfigManager(config_path=self.temp_file.name)
+        self.assertEqual(reloaded.groq_api_key, "gsk_test_123")
+        self.assertEqual(reloaded.gemini_api_key, "AIza_test_456")
+
+    def test_llm_service_update_api_keys_dynamically(self):
+        llm = LLMService(api_key="old_groq", gemini_api_key=None)
+        self.assertEqual(llm.api_key, "old_groq")
+        self.assertIsNone(llm.gemini_api_key)
+
+        llm.update_api_keys("  new_groq_key  ", "  new_gemini_key  ")
+        self.assertEqual(llm.api_key, "new_groq_key")
+        self.assertEqual(llm.client.api_key, "new_groq_key")
+        self.assertEqual(llm.gemini_api_key, "new_gemini_key")
+
+    def test_settings_window_api_keys_tab_save_and_toggle(self):
+        os.environ["GROQ_API_KEY"] = "initial_groq_env"
+        os.environ["GEMINI_API_KEY"] = "initial_gemini_env"
+
+        mock_api_cb = MagicMock()
+        ui = CopilotUI(
+            config_manager=self.config_manager,
+            on_api_keys_change=mock_api_cb
+        )
+        ui.update()
+
+        try:
+            ui.open_settings()
+            ui.update()
+            sw = ui.settings_window
+            self.assertIsNotNone(sw)
+
+            # 1. Seleciona aba de Chaves de API e verifica máscara padrão ("•")
+            sw.tabview.set("🔑 Chaves de API")
+            ui.update()
+            self.assertEqual(sw.groq_key_entry.cget("show"), "•")
+            self.assertEqual(sw.gemini_key_entry.cget("show"), "•")
+            self.assertEqual(sw.groq_key_entry.get(), "initial_groq_env")
+            self.assertEqual(sw.gemini_key_entry.get(), "initial_gemini_env")
+
+            # 2. Alterna switch para mostrar texto visível
+            sw.show_keys_switch.select()
+            sw._toggle_show_api_keys()
+            ui.update()
+            self.assertEqual(sw.groq_key_entry.cget("show"), "")
+            self.assertEqual(sw.gemini_key_entry.cget("show"), "")
+
+            # 3. Alterna switch de volta para ocultar
+            sw.show_keys_switch.deselect()
+            sw._toggle_show_api_keys()
+            ui.update()
+            self.assertEqual(sw.groq_key_entry.cget("show"), "•")
+            self.assertEqual(sw.gemini_key_entry.cget("show"), "•")
+
+            # 4. Preenche novas chaves e salva
+            sw.groq_key_entry.delete(0, "end")
+            sw.groq_key_entry.insert(0, "  gsk_ui_key  ")
+            sw.gemini_key_entry.delete(0, "end")
+            sw.gemini_key_entry.insert(0, "  AIza_ui_key  ")
+
+            sw._save_api_keys()
+            ui.update()
+
+            mock_api_cb.assert_called_once_with("gsk_ui_key", "AIza_ui_key")
+
+            # 5. Verifica persistência em disco
+            reloaded = ConfigManager(config_path=self.temp_file.name)
+            self.assertEqual(reloaded.groq_api_key, "gsk_ui_key")
+            self.assertEqual(reloaded.gemini_api_key, "AIza_ui_key")
+
+            # 6. Fecha e reabre SettingsWindow para verificar recarregamento nos campos
+            sw.destroy()
+            ui.update()
+
+            ui.open_settings()
+            ui.update()
+            sw2 = ui.settings_window
+            self.assertEqual(sw2.groq_key_entry.get(), "gsk_ui_key")
+            self.assertEqual(sw2.gemini_key_entry.get(), "AIza_ui_key")
             sw2.destroy()
             ui.update()
         finally:
