@@ -62,6 +62,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "Bancos | Qual é a sua experiência prática com bancos relacionais (MySQL/PostgreSQL) vs NoSQL?",
         "Desafio | Qual foi um desafio técnico complexo que você enfrentou e como superou?",
     ],
+    "api_keys": {
+        "groq_api_key": "",
+        "gemini_api_key": "",
+    },
 }
 
 
@@ -72,6 +76,7 @@ class ConfigManager:
     """
 
     def __init__(self, config_path: Optional[str] = None) -> None:
+        self._is_default_path = config_path is None
         if config_path:
             self.config_path = Path(config_path)
         else:
@@ -144,10 +149,51 @@ class ConfigManager:
         self.save_config()
 
     def reset_defaults(self) -> None:
-        """Restaura todas as configurações para o padrão original."""
+        """Restaura todas as configurações para o padrão original, preservando chaves de API."""
+        preserved_keys = self._config.get("api_keys")
         self._config = json.loads(json.dumps(DEFAULT_CONFIG))
+        if isinstance(preserved_keys, dict):
+            self._config["api_keys"] = dict(preserved_keys)
         self.save_config()
         logger.info("Configurações restauradas para os padrões.")
+
+    @property
+    def groq_api_key(self) -> str:
+        saved = self._config.get("api_keys", {}).get("groq_api_key", "")
+        if saved and str(saved).strip():
+            return str(saved).strip()
+        return (os.getenv("GROQ_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip())
+
+    @property
+    def gemini_api_key(self) -> str:
+        saved = self._config.get("api_keys", {}).get("gemini_api_key", "")
+        if saved and str(saved).strip():
+            return str(saved).strip()
+        return os.getenv("GEMINI_API_KEY", "").strip()
+
+    def set_api_keys(self, groq_key: str, gemini_key: str, sync_env: bool = True) -> None:
+        """Salva e sincroniza as chaves de API da Groq e do Gemini em disco e no ambiente."""
+        groq_clean = (groq_key or "").strip()
+        gemini_clean = (gemini_key or "").strip()
+
+        self._config["api_keys"] = {
+            "groq_api_key": groq_clean,
+            "gemini_api_key": gemini_clean,
+        }
+        self.save_config()
+
+        os.environ["GROQ_API_KEY"] = groq_clean
+        os.environ["GEMINI_API_KEY"] = gemini_clean
+
+        if sync_env and self._is_default_path:
+            env_file = self.config_path.parent / ".env"
+            if env_file.exists():
+                try:
+                    from dotenv import set_key
+                    set_key(str(env_file), "GROQ_API_KEY", groq_clean)
+                    set_key(str(env_file), "GEMINI_API_KEY", gemini_clean)
+                except Exception as e:
+                    logger.warning(f"Não foi possível sincronizar chaves no arquivo .env: {e}")
 
     @property
     def audio_device_index(self) -> Optional[int]:
