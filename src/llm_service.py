@@ -131,7 +131,7 @@ class LLMService:
 
     def __init__(
         self,
-        api_key: str,
+        api_key: Optional[str] = None,
         model: Optional[str] = None,
         response_style: str = "direta",
         custom_persona: Optional[str] = None,
@@ -141,8 +141,9 @@ class LLMService:
         on_status_notice: Optional[Callable[[str, str], None]] = None,
         tpm_limit: Optional[int] = None,
     ) -> None:
+        self.api_key = (api_key or "").strip()
         self.client = AsyncOpenAI(
-            api_key=api_key,
+            api_key=self.api_key or "not-configured",
             base_url="https://api.groq.com/openai/v1"
         )
         self.model = model or os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
@@ -164,10 +165,25 @@ class LLMService:
         self.token_tracker = TokenTracker(limit=resolved_tpm_limit)
         logger.info(f"LLMService inicializado. Modelo: '{self.model}', Limite TPM: {resolved_tpm_limit}")
 
-        self.gemini_api_key = gemini_api_key
+        self.gemini_api_key = (gemini_api_key or "").strip() or None
         if self.gemini_api_key:
             genai.configure(api_key=self.gemini_api_key)
             logger.info("Gemini API configurada para fallback.")
+
+    def update_api_keys(self, groq_api_key: Optional[str], gemini_api_key: Optional[str]) -> None:
+        """Atualiza dinamicamente as chaves de API da Groq e do Gemini em tempo de execução."""
+        self.api_key = (groq_api_key or "").strip()
+        self.client = AsyncOpenAI(
+            api_key=self.api_key or "not-configured",
+            base_url="https://api.groq.com/openai/v1"
+        )
+        self.gemini_api_key = (gemini_api_key or "").strip() or None
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
+        logger.info(
+            f"Chaves de API atualizadas em runtime (Groq configurada: {bool(self.api_key)}, "
+            f"Gemini configurada: {bool(self.gemini_api_key)})."
+        )
 
     def set_response_style(self, style: str) -> None:
         """Define o estilo de resposta da IA ('direta', 'tecnica', 'star')."""

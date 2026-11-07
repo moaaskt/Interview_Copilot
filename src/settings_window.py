@@ -127,6 +127,7 @@ class SettingsWindow(ctk.CTkToplevel):
         on_quick_questions_change: Optional[Callable[[List[str]], None]] = None,
         on_question_detection_change: Optional[Callable[[bool], None]] = None,
         on_pre_roll_change: Optional[Callable[[bool], None]] = None,
+        on_api_keys_change: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         super().__init__(parent)
 
@@ -138,10 +139,11 @@ class SettingsWindow(ctk.CTkToplevel):
         self.on_quick_questions_change = on_quick_questions_change
         self.on_question_detection_change = on_question_detection_change
         self.on_pre_roll_change = on_pre_roll_change
+        self.on_api_keys_change = on_api_keys_change
 
         self.title("Configurações - Interview Copilot")
-        self.geometry("560x490")
-        self.minsize(520, 440)
+        self.geometry("620x500")
+        self.minsize(560, 440)
         self.attributes("-topmost", True)
         self.configure(fg_color="#181825")
 
@@ -180,11 +182,13 @@ class SettingsWindow(ctk.CTkToplevel):
         self.tab_llm = self.tabview.add("🧠 IA & Persona")
         self.tab_hotkeys = self.tabview.add("⌨ Atalhos")
         self.tab_quick = self.tabview.add("⚡ Perguntas Rápidas")
+        self.tab_api_keys = self.tabview.add("🔑 Chaves de API")
 
         self._build_audio_tab()
         self._build_llm_tab()
         self._build_hotkeys_tab()
         self._build_quick_tab()
+        self._build_api_keys_tab()
 
     # ==========================================
     # ABA 1: ÁUDIO & MEDIDOR VU
@@ -741,3 +745,123 @@ class SettingsWindow(ctk.CTkToplevel):
         logger.info(f"{len(lines)} perguntas rápidas salvas com sucesso.")
         self.save_quick_btn.configure(text="✔ Salvo com Sucesso!")
         self.after(2000, lambda: self.save_quick_btn.configure(text="💾 Salvar Perguntas"))
+
+    # ==========================================
+    # ABA 5: CHAVES DE API (GROQ & GEMINI)
+    # ==========================================
+    def _build_api_keys_tab(self) -> None:
+        tab = self.tab_api_keys
+
+        lbl_title = ctk.CTkLabel(
+            tab,
+            text="Credenciais dos Provedores de IA (Groq & Google Gemini):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#A6ADC8"
+        )
+        lbl_title.pack(anchor="w", padx=12, pady=(10, 2))
+
+        lbl_help = ctk.CTkLabel(
+            tab,
+            text="💡 As chaves são salvas localmente e aplicadas em tempo real sem precisar reiniciar o aplicativo.",
+            font=ctk.CTkFont(size=11),
+            text_color="#89B4FA"
+        )
+        lbl_help.pack(anchor="w", padx=12, pady=(0, 12))
+
+        # Container Chave Groq
+        groq_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
+        groq_box.pack(fill="x", padx=12, pady=(0, 10))
+
+        lbl_groq = ctk.CTkLabel(
+            groq_box,
+            text="⚡ Chave de API da Groq (Principal - LLM):",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#CDD6F4"
+        )
+        lbl_groq.pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.groq_key_entry = ctk.CTkEntry(
+            groq_box,
+            height=30,
+            fg_color="#181825",
+            border_color="#313244",
+            text_color="#CDD6F4",
+            placeholder_text="gsk_...",
+            show="•",
+            font=ctk.CTkFont(size=11)
+        )
+        self.groq_key_entry.pack(fill="x", padx=12, pady=(0, 10))
+        if self.config_manager.groq_api_key:
+            self.groq_key_entry.insert(0, self.config_manager.groq_api_key)
+
+        # Container Chave Gemini
+        gemini_box = ctk.CTkFrame(tab, fg_color="#11111B", corner_radius=8)
+        gemini_box.pack(fill="x", padx=12, pady=(0, 12))
+
+        lbl_gemini = ctk.CTkLabel(
+            gemini_box,
+            text="💎 Chave de API do Google Gemini (Fallback Automático - LLM):",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#CDD6F4"
+        )
+        lbl_gemini.pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.gemini_key_entry = ctk.CTkEntry(
+            gemini_box,
+            height=30,
+            fg_color="#181825",
+            border_color="#313244",
+            text_color="#CDD6F4",
+            placeholder_text="AIzaSy...",
+            show="•",
+            font=ctk.CTkFont(size=11)
+        )
+        self.gemini_key_entry.pack(fill="x", padx=12, pady=(0, 10))
+        if self.config_manager.gemini_api_key:
+            self.gemini_key_entry.insert(0, self.config_manager.gemini_api_key)
+
+        # Switch Mostrar / Ocultar Chaves
+        self.show_keys_switch = ctk.CTkSwitch(
+            tab,
+            text="👁 Mostrar chaves de API em texto visível",
+            font=ctk.CTkFont(size=11),
+            text_color="#CDD6F4",
+            progress_color="#89B4FA",
+            command=self._toggle_show_api_keys
+        )
+        self.show_keys_switch.pack(anchor="w", padx=14, pady=(2, 14))
+
+        btn_row = ctk.CTkFrame(tab, fg_color="transparent")
+        btn_row.pack(fill="x", padx=12, pady=(4, 10))
+
+        self.save_api_keys_btn = ctk.CTkButton(
+            btn_row,
+            text="💾 Salvar Chaves",
+            width=160,
+            height=30,
+            fg_color="#A6E3A1",
+            text_color="#11111B",
+            hover_color="#94E2D5",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._save_api_keys
+        )
+        self.save_api_keys_btn.pack(side="right")
+
+    def _toggle_show_api_keys(self) -> None:
+        """Alterna entre exibir caracteres reais ou máscara nas entradas de chaves de API."""
+        mask = "" if self.show_keys_switch.get() else "•"
+        self.groq_key_entry.configure(show=mask)
+        self.gemini_key_entry.configure(show=mask)
+
+    def _save_api_keys(self) -> None:
+        """Persiste as chaves de API da Groq e do Gemini e aciona atualização imediata em runtime."""
+        groq_key = self.groq_key_entry.get().strip()
+        gemini_key = self.gemini_key_entry.get().strip()
+
+        self.config_manager.set_api_keys(groq_key, gemini_key)
+        if self.on_api_keys_change:
+            self.on_api_keys_change(groq_key, gemini_key)
+
+        logger.info("Chaves de API (Groq e Gemini) salvas pela interface.")
+        self.save_api_keys_btn.configure(text="✔ Chaves Salvas!")
+        self.after(2000, lambda: self.save_api_keys_btn.configure(text="💾 Salvar Chaves"))

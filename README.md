@@ -51,7 +51,22 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 2. 🎙️ Painel de Configurações — Aba `Áudio` (`configuraçoes1.png`)
+### 2. ⚡ Resposta Gerada em Tempo Real (`resposta.png`)
+
+<div align="center">
+  <img src="src/public/imagens/resposta.png" alt="Resposta gerada em tempo real pelo Interview Copilot" width="750"/>
+</div>
+
+> **Legenda & O que esta tela faz:**
+> Exemplo prático da aplicação em ação durante a entrevista com o status `● Resposta Concluída`.
+>
+> - **Pergunta Capturada e Confirmada (`✔`)**: Na área **Pergunta Transcrita**, o texto finalizado pelo recrutador (ou disparado pelo atalho de pergunta rápida) é marcado com um ícone de confirmação (`✔ Qual é o seu principal ponto forte?`).
+> - **Monitoramento de Tokens Ativo (`TPM: 2.449 / 7.000 (34%)`)**: A barra de TPM avança em verde proporcionalmente aos tokens gerados na requisição, demonstrando o controle rigoroso da cota de 60 segundos da Groq para garantir que você nunca seja bloqueado por *rate limit*.
+> - **Sugestão da IA em Primeira Pessoa**: Na área **Sugestão da IA (Groq)**, o modelo estruturou uma resposta técnica impecável, sem enrolação, contextualizada com a vivência real do desenvolvedor (citando projetos reais como *Doar Digital*, desafios de idempotência em checkout, concorrência/locks no *MySQL* e filas em *Redis*). O texto é exibido em verde suave de alto contraste (`#50FA7B` / `#A6E3A1`), ideal para leitura imediata sem desviar o foco da câmera.
+
+---
+
+### 3. 🎙️ Painel de Configurações — Aba `Áudio` (`configuraçoes1.png`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes1.png" alt="Configurações de Áudio, VU-Meter, Pré-Roll e Detecção de Perguntas" width="600"/>
@@ -67,7 +82,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 3. 🧠 Painel de Configurações — Aba `IA & Persona` (`configuraçoes2.jpg`)
+### 4. 🧠 Painel de Configurações — Aba `IA & Persona` (`configuraçoes2.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes2.jpg" alt="Configurações de IA, Estilo de Resposta e System Prompt da Persona" width="600"/>
@@ -85,7 +100,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 4. ⌨️ Painel de Configurações — Aba `Atalhos` (`configuraçoes3.jpg`)
+### 5. ⌨️ Painel de Configurações — Aba `Atalhos` (`configuraçoes3.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes3.jpg" alt="Mapeamento Interativo de Teclas de Atalho Globais" width="600"/>
@@ -99,7 +114,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
-### 5. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` (`configuraçoes4.jpg`)
+### 6. ⚡ Painel de Configurações — Aba `Perguntas Rápidas` (`configuraçoes4.jpg`)
 
 <div align="center">
   <img src="src/public/imagens/configura%C3%A7oes4.jpg" alt="Editor de Perguntas Rápidas de Entrevista (Quick Prompts)" width="600"/>
@@ -114,6 +129,22 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 >   - `Sherlock | Me conte sobre o projeto Sherlock/WhatsMiau que você desenvolveu`
 >   - `Motivação | Por que você quer trabalhar na empresa?`
 > - **Atualização Dinâmica**: Ao clicar em **💾 Salvar Perguntas**, o HUD principal reconstrói imediatamente a grade de botões organizando tudo em linhas automáticas.
+
+---
+
+### 7. 🔑 Painel de Configurações — Aba `Chaves de API` (`apikeyfoto.png`)
+
+<div align="center">
+  <img src="src/public/imagens/apikeyfoto.png" alt="Configuração de Chaves de API pela Interface Gráfica" width="600"/>
+</div>
+
+> **Legenda & O que esta tela faz:**
+> Facilidade total para o usuário configurar suas credenciais sem precisar abrir arquivos de código ou editar o `.env` manualmente!
+>
+> - **Chave de API da Groq (Principal - LLM)**: Campo protegido para inserir sua chave da Groq Cloud (`gsk_...`), responsável pelas respostas de altíssima velocidade.
+> - **Chave de API do Google Gemini (Fallback Automático - LLM)**: Campo protegido para inserir sua chave do Google AI Studio (`AIzaSy...`), garantindo contingência automática quando os limites de tokens da Groq forem atingidos.
+> - **Switch `👁 Mostrar chaves de API em texto visível`**: Permite alternar entre visualização com máscara (`••••••••••`) e texto legível para conferir o preenchimento sem erros.
+> - **Aplicação Imediata em Tempo Real**: Ao clicar em **💾 Salvar Chaves**, as credenciais são salvas localmente e recarregadas instantaneamente pelo aplicativo, sem necessidade de reiniciar o programa.
 
 ---
 
@@ -208,7 +239,16 @@ pip install -r requirements.txt
 
 ---
 
-## 🔐 Configuração de Variáveis de Ambiente (`.env`)
+## 🔐 Configuração das Chaves de API (Interface Gráfica ou `.env`)
+
+Você pode configurar suas chaves de API de **duas formas super fáceis**:
+
+### Opção 1: Diretamente pela Interface Gráfica (Recomendado) 🚀
+Abra o aplicativo, clique no ícone **`⚙`** (ou pressione **`F12`**) e acesse a aba **`🔑 Chaves de API`** (conforme visto na foto acima). Lá você digita sua chave da **Groq** e do **Google Gemini** e clica em **💾 Salvar Chaves**. Elas são salvas e aplicadas em tempo real!
+
+---
+
+### Opção 2: Pelo arquivo `.env`
 
 Crie um arquivo `.env` na raiz do projeto copiando o modelo `.env.example`:
 

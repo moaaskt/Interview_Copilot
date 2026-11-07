@@ -32,20 +32,18 @@ class CopilotApp:
         env_path = os.path.join(project_root, ".env")
         load_dotenv(dotenv_path=env_path, override=True)
 
-        self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-        self.groq_key = os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY")
-        self.gemini_key = os.getenv("GEMINI_API_KEY")
+        self.config_manager = ConfigManager()
 
-        if not self.deepgram_key or not self.groq_key:
-            missing = []
-            if not self.deepgram_key:
-                missing.append("DEEPGRAM_API_KEY")
-            if not self.groq_key:
-                missing.append("GROQ_API_KEY (ou OPENAI_API_KEY)")
-            logger.error(f"Configuração incompleta no arquivo .env ({env_path}). Chave(s) ausente(s): {', '.join(missing)}")
+        self.deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+        self.groq_key = self.config_manager.groq_api_key
+        self.gemini_key = self.config_manager.gemini_api_key or None
+
+        if not self.deepgram_key:
+            logger.error(f"Configuração incompleta no arquivo .env ({env_path}). Chave ausente: DEEPGRAM_API_KEY")
             sys.exit(1)
 
-        self.config_manager = ConfigManager()
+        if not self.groq_key:
+            logger.warning("GROQ_API_KEY não encontrada. Configure na aba '🔑 Chaves de API' nas Configurações.")
 
         self.ui = CopilotUI(
             on_start_recording=self.start_recording,
@@ -60,7 +58,10 @@ class CopilotApp:
             on_hotkeys_change=self.on_hotkeys_change,
             on_question_detection_change=self.on_question_detection_change,
             on_pre_roll_change=self.on_pre_roll_change,
+            on_api_keys_change=self.on_api_keys_change,
         )
+        if not self.groq_key:
+            self.ui.set_status("⚠ Configure sua chave Groq (⚙)", "#F9E2AF")
         self.llm_service = LLMService(
             api_key=self.groq_key,
             gemini_api_key=self.gemini_key,
@@ -165,6 +166,14 @@ class CopilotApp:
             self.on_status_notice("🎙 Pré-Roll: Ativado", "#A6E3A1")
         else:
             self.on_status_notice("🎙 Pré-Roll: Desativado", "#A6ADC8")
+
+    def on_api_keys_change(self, groq_key: str, gemini_key: str) -> None:
+        """Callback chamada quando o usuário salva novas chaves de API (Groq e Gemini) nas configurações."""
+        logger.info("Atualizando chaves de API em tempo de execução no CopilotApp.")
+        self.groq_key = groq_key
+        self.gemini_key = gemini_key or None
+        self.llm_service.update_api_keys(groq_key, gemini_key)
+        self.on_status_notice("🔑 Chaves de API atualizadas!", "#A6E3A1")
 
     def on_provider_change(self, provider_name: str) -> None:
         """Callback chamada quando o serviço LLM altera o provedor (ex: de Groq para Gemini)."""
