@@ -37,6 +37,7 @@ class CopilotUI(ctk.CTk):
         on_hotkeys_change: Optional[Callable[[dict], None]] = None,
         on_question_detection_change: Optional[Callable[[bool], None]] = None,
         on_pre_roll_change: Optional[Callable[[bool], None]] = None,
+        on_api_keys_change: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         super().__init__()
 
@@ -62,6 +63,7 @@ class CopilotUI(ctk.CTk):
         self.on_hotkeys_change = on_hotkeys_change
         self.on_question_detection_change = on_question_detection_change
         self.on_pre_roll_change = on_pre_roll_change
+        self.on_api_keys_change = on_api_keys_change
 
         self.settings_window: Optional[SettingsWindow] = None
 
@@ -504,6 +506,7 @@ class CopilotUI(ctk.CTk):
             on_quick_questions_change=self._on_quick_questions_updated,
             on_question_detection_change=self.on_question_detection_change,
             on_pre_roll_change=self.on_pre_roll_change,
+            on_api_keys_change=self.on_api_keys_change,
         )
         return "break"
 
