@@ -132,6 +132,22 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 
 ---
 
+### 7. 🔑 Painel de Configurações — Aba `Chaves de API` (`apikeyfoto.png`)
+
+<div align="center">
+  <img src="src/public/imagens/apikeyfoto.png" alt="Configuração de Chaves de API pela Interface Gráfica" width="600"/>
+</div>
+
+> **Legenda & O que esta tela faz:**
+> Facilidade total para o usuário configurar suas credenciais sem precisar abrir arquivos de código ou editar o `.env` manualmente!
+>
+> - **Chave de API da Groq (Principal - LLM)**: Campo protegido para inserir sua chave da Groq Cloud (`gsk_...`), responsável pelas respostas de altíssima velocidade.
+> - **Chave de API do Google Gemini (Fallback Automático - LLM)**: Campo protegido para inserir sua chave do Google AI Studio (`AIzaSy...`), garantindo contingência automática quando os limites de tokens da Groq forem atingidos.
+> - **Switch `👁 Mostrar chaves de API em texto visível`**: Permite alternar entre visualização com máscara (`••••••••••`) e texto legível para conferir o preenchimento sem erros.
+> - **Aplicação Imediata em Tempo Real**: Ao clicar em **💾 Salvar Chaves**, as credenciais são salvas localmente e recarregadas instantaneamente pelo aplicativo, sem necessidade de reiniciar o programa.
+
+---
+
 ## 🌟 Resumo da Arquitetura Técnica
 
 | Camada | Tecnologia | Papel no Sistema |
@@ -223,7 +239,16 @@ pip install -r requirements.txt
 
 ---
 
-## 🔐 Configuração de Variáveis de Ambiente (`.env`)
+## 🔐 Configuração das Chaves de API (Interface Gráfica ou `.env`)
+
+Você pode configurar suas chaves de API de **duas formas super fáceis**:
+
+### Opção 1: Diretamente pela Interface Gráfica (Recomendado) 🚀
+Abra o aplicativo, clique no ícone **`⚙`** (ou pressione **`F12`**) e acesse a aba **`🔑 Chaves de API`** (conforme visto na foto acima). Lá você digita sua chave da **Groq** e do **Google Gemini** e clica em **💾 Salvar Chaves**. Elas são salvas e aplicadas em tempo real!
+
+---
+
+### Opção 2: Pelo arquivo `.env`
 
 Crie um arquivo `.env` na raiz do projeto copiando o modelo `.env.example`:
 
