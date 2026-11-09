@@ -31,7 +31,7 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 </div>
 
 > **Legenda & O que esta tela faz:**
-> Esta é a janela principal de operação durante a entrevista. Ela permanece sempre no topo (`Always on Top`) e não possui bordas pesadas do sistema operacional, podendo ficar posicionada logo abaixo da sua webcam.
+> Esta é a janela principal de operação durante a conversa ou reunião. Ela permanece sempre no topo (`Always on Top`) e não possui bordas pesadas do sistema operacional, podendo ficar posicionada logo abaixo da sua webcam.
 >
 > - **Barra Superior Inteligente (Header)**:
 >   - `● Pronto` / `● Ouvindo Pergunta...`: Badge de status em tempo real da sessão e da conexão WebSocket.
@@ -58,9 +58,9 @@ Abaixo você confere em detalhes cada tela do **Interview Copilot (`helpIA`)** e
 </div>
 
 > **Legenda & O que esta tela faz:**
-> Exemplo prático da aplicação em ação durante a entrevista com o status `● Resposta Concluída`.
+> Exemplo prático da aplicação em ação durante a abordagem com o status `● Resposta Concluída`.
 >
-> - **Pergunta Capturada e Confirmada (`✔`)**: Na área **Pergunta Transcrita**, o texto finalizado pelo recrutador (ou disparado pelo atalho de pergunta rápida) é marcado com um ícone de confirmação (`✔ Qual é o seu principal ponto forte?`).
+> - **Pergunta Capturada e Confirmada (`✔`)**: Na área **Pergunta Transcrita**, o texto finalizado pelo usuário (ou disparado pelo atalho de pergunta rápida) é marcado com um ícone de confirmação (`✔ Qual é o seu principal ponto forte?`).
 > - **Monitoramento de Tokens Ativo (`TPM: 2.449 / 7.000 (34%)`)**: A barra de TPM avança em verde proporcionalmente aos tokens gerados na requisição, demonstrando o controle rigoroso da cota de 60 segundos da Groq para garantir que você nunca seja bloqueado por *rate limit*.
 > - **Sugestão da IA em Primeira Pessoa**: Na área **Sugestão da IA (Groq)**, o modelo estruturou uma resposta técnica impecável, sem enrolação, contextualizada com a vivência real do desenvolvedor (citando projetos reais como *Doar Digital*, desafios de idempotência em checkout, concorrência/locks no *MySQL* e filas em *Redis*). O texto é exibido em verde suave de alto contraste (`#50FA7B` / `#A6E3A1`), ideal para leitura imediata sem desviar o foco da câmera.
 
